@@ -1,0 +1,175 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    name: Build Windows Release
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      
+      - name: Setup MSYS2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-clang
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-ninja
+            git
+            zip
+      
+      - name: Cache Vulkan SDK
+        id: vulkan-sdk-cache
+        uses: actions/cache@v3
+        with:
+          path: C:\VulkanSDK\1.3.239.0
+          key: vulkan-sdk-1.3.239.0-windows-${{ runner.os }}
+          
+      - name: Install Vulkan SDK
+        if: steps.vulkan-sdk-cache.outputs.cache-hit != 'true'
+        shell: powershell
+        run: |
+          $vulkanSdkUrl = "https://sdk.lunarg.com/sdk/download/1.3.239.0/windows/VulkanSDK-1.3.239.0-Installer.exe"
+          $installerPath = "$env:TEMP\VulkanSDK-Installer.exe"
+          Invoke-WebRequest -Uri $vulkanSdkUrl -OutFile $installerPath
+          Start-Process -FilePath $installerPath -ArgumentList "--accept-licenses --default-answer --confirm-command install" -Wait
+                echo "VULKAN_SDK=$env:VULKAN_SDK" >> $env:GITHUB_ENV
+      
+      - name: Build project
+        run: |
+          export VULKAN_SDK=/c/VulkanSDK/1.3.239.0
+          mkdir -p build
+          cd build
+          cmake -DCMAKE_BUILD_TYPE=Release -G "Ninja" \
+                -DBUILD_SHARED_LIBS=OFF \
+                -DLIBTYPE=STATIC \
+                ..
+          cmake --build . --config Release
+      
+      - name: Prepare artifacts
+        run: |
+          mkdir -p release-package
+          cp build/vulkan-minecraft.exe release-package/
+          cp -r assets release-package/
+          cd release-package
+          zip -r ../vulkan-minecraft-windows-${GITHUB_REF_NAME}.zip .
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-build
+          path: vulkan-minecraft-windows-${{ github.ref_name }}.zip
+          retention-days: 1
+
+  build-linux:
+    name: Build Linux Release
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            cmake \
+            libvulkan-dev \
+            vulkan-tools \
+            glslang-tools \
+            libshaderc-dev \
+            libgl1-mesa-dev \
+            xorg-dev \
+            libwayland-dev \
+            wayland-protocols \
+            libxrandr-dev \
+            libxinerama-dev \
+            libxcursor-dev \
+            libxi-dev \
+            libxkbcommon-dev \
+            zip \
+            ninja-build
+      
+      - name: Build project
+        run: |
+          export VULKAN_SDK=/usr
+          mkdir -p build
+          cd build
+          cmake -DCMAKE_BUILD_TYPE=Release \
+                -DBUILD_SHARED_LIBS=OFF \
+                -DLIBTYPE=STATIC \
+                -G "Ninja" \
+                ..
+          cmake --build . --config Release
+      
+      - name: Prepare artifacts
+        run: |
+          mkdir -p release-package
+          cp build/vulkan-minecraft release-package/
+          cp -r assets release-package/
+          cd release-package
+          zip -r ../vulkan-minecraft-linux-${GITHUB_REF_NAME}.zip .
+
+      - name: Upload Linux artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-build
+          path: vulkan-minecraft-linux-${{ github.ref_name }}.zip
+          retention-days: 1
+
+  create-release:
+    name: Create Release
+    needs: [build-windows, build-linux]
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+      
+      - name: Extract release notes
+        id: extract_notes
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          echo "Extracting release notes for version $VERSION"
+          awk -v ver="$VERSION" '
+          BEGIN { section=0; notes=""; }
+          $0 ~ "^## \\["ver"\\]" { section=1; notes=notes $0 "\n"; next }
+          section==1 && $0 ~ "^## " { section=0; next }
+          section==1 { notes=notes $0 "\n" }
+          END { print notes }
+          ' CHANGELOG.md > RELEASE_NOTES.md
+          cat RELEASE_NOTES.md
+      
+      - name: Create Release
+        id: create_release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: Vulkan Minecraft ${{ github.ref_name }}
+          files: |
+            windows-build/vulkan-minecraft-windows-${{ github.ref_name }}.zip
+            linux-build/vulkan-minecraft-linux-${{ github.ref_name }}.zip
+          body_path: RELEASE_NOTES.md
+          draft: false
+          prerelease: false
