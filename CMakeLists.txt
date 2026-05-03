@@ -1,7 +1,7 @@
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.14)
 project(vulkan-minecraft)
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 option(BUILD_SHARED_LIBS "Build shared libraries" OFF)
@@ -52,9 +52,19 @@ endif()
 set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
 set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-add_subdirectory(lib/glfw)
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/lib/glfw/CMakeLists.txt")
+    add_subdirectory(lib/glfw)
+else()
+    message(STATUS "GLFW not in lib/glfw; using FetchContent (release archive)")
+    include(FetchContent)
+    FetchContent_Declare(
+        glfw
+        URL https://github.com/glfw/glfw/releases/download/3.4/glfw-3.4.zip
+    )
+    FetchContent_MakeAvailable(glfw)
+endif()
 
-add_compile_definitions(GLM_ENABLE_EXPERIMENTAL)
+add_compile_definitions(GLM_ENABLE_EXPERIMENTAL GLM_FORCE_DEPTH_ZERO_TO_ONE)
 
 set(ALSOFT_UTILS OFF CACHE BOOL "" FORCE)
 set(ALSOFT_EXAMPLES OFF CACHE BOOL "" FORCE)
@@ -66,7 +76,7 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -w")
 endif()
 
-add_subdirectory(lib/openal)
+# add_subdirectory(lib/openal)  # Commented out due to empty submodule
 
 file(GLOB_RECURSE SRC_FILES 
         "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
@@ -76,6 +86,8 @@ file(GLOB_RECURSE SRC_FILES
 add_executable(vulkan-minecraft ${SRC_FILES})
 
 if(WIN32)
+    target_compile_definitions(vulkan-minecraft PRIVATE NOMINMAX)
+
     set(APP_ICON_PATH "${CMAKE_CURRENT_SOURCE_DIR}/assets/icons/app.ico")
     set(APP_ICON_RESOURCE_WINDOWS "${CMAKE_CURRENT_SOURCE_DIR}/assets/icons/app_icon.rc")
 
@@ -154,15 +166,15 @@ target_include_directories(vulkan-minecraft PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/lib/vma/include
 )
 
-add_library(stb_vorbis STATIC "${CMAKE_CURRENT_SOURCE_DIR}/lib/stb/stb_vorbis.c")
-set_target_properties(stb_vorbis PROPERTIES LINKER_LANGUAGE C)
-target_include_directories(stb_vorbis PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/lib/stb")
+# stb_vorbis STATIC "${CMAKE_CURRENT_SOURCE_DIR}/lib/stb/stb_vorbis.c" - commented due to missing file
+# set_target_properties(stb_vorbis PROPERTIES LINKER_LANGUAGE C)
+# target_include_directories(stb_vorbis PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/lib/stb")
 
 target_link_libraries(vulkan-minecraft PRIVATE
         glfw
         Vulkan::Vulkan
-        OpenAL
-        stb_vorbis
+        # OpenAL
+        # stb_vorbis
 )
 
 if(Vulkan_FOUND)
@@ -234,4 +246,4 @@ endif()
 add_custom_command(TARGET vulkan-minecraft POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy_directory
     ${CMAKE_SOURCE_DIR}/assets
-    ${CMAKE_BINARY_DIR}/assets)
+    "$<TARGET_FILE_DIR:vulkan-minecraft>/assets")

@@ -4,30 +4,60 @@
 namespace wld
 {
 
+void WorldGenerator::applyNoiseParams()
+{
+    m_terrainNoise.SetSeed(m_seed);
+    m_terrainNoise.SetNoiseType(FastNoiseLite::NoiseType_Perlin);
+    m_terrainNoise.SetFractalType(FastNoiseLite::FractalType_FBm);
+    m_biomeNoise.SetSeed(m_seed + 1);
+    m_biomeNoise.SetNoiseType(FastNoiseLite::NoiseType_Perlin);
+    m_treeNoise.SetSeed(m_seed + 2);
+    m_treeNoise.SetNoiseType(FastNoiseLite::NoiseType_Perlin);
+    m_flowerNoise.SetSeed(m_seed + 3);
+    m_flowerNoise.SetNoiseType(FastNoiseLite::NoiseType_Perlin);
+
+    switch (m_terrainPreset) {
+    case 0: // flat — gentle, low variation
+        m_terrainNoise.SetFractalOctaves(2);
+        m_terrainNoise.SetFrequency(0.002f);
+        m_terrainNoise.SetFractalLacunarity(2.0f);
+        m_terrainNoise.SetFractalGain(0.35f);
+        m_biomeNoise.SetFrequency(0.001f);
+        break;
+    case 2: // mountains
+        m_terrainNoise.SetFractalOctaves(7);
+        m_terrainNoise.SetFrequency(0.008f);
+        m_terrainNoise.SetFractalLacunarity(2.2f);
+        m_terrainNoise.SetFractalGain(0.55f);
+        m_biomeNoise.SetFrequency(0.0025f);
+        break;
+    default: // 1 — balanced
+        m_terrainNoise.SetFractalOctaves(5);
+        m_terrainNoise.SetFrequency(0.005f);
+        m_terrainNoise.SetFractalLacunarity(2.0f);
+        m_terrainNoise.SetFractalGain(0.5f);
+        m_biomeNoise.SetFrequency(0.002f);
+        break;
+    }
+
+    m_treeNoise.SetFrequency(0.5f);
+    m_flowerNoise.SetFrequency(0.8f);
+}
+
 void WorldGenerator::init(u32 seed)
 {
     m_seed = seed;
     m_rng.seed(seed);
+    applyNoiseParams();
+}
 
-    m_terrainNoise.SetSeed(seed);
-    m_terrainNoise.SetNoiseType(FastNoiseLite::NoiseType_Perlin);
-    m_terrainNoise.SetFractalType(FastNoiseLite::FractalType_FBm);
-    m_terrainNoise.SetFractalOctaves(5);
-    m_terrainNoise.SetFrequency(0.005f);
-    m_terrainNoise.SetFractalLacunarity(2.0f);
-    m_terrainNoise.SetFractalGain(0.5f);
-
-    m_biomeNoise.SetSeed(seed + 1);
-    m_biomeNoise.SetNoiseType(FastNoiseLite::NoiseType_Perlin);
-    m_biomeNoise.SetFrequency(0.002f);
-
-    m_treeNoise.SetSeed(seed + 2);
-    m_treeNoise.SetNoiseType(FastNoiseLite::NoiseType_Perlin);
-    m_treeNoise.SetFrequency(0.5f);
-
-    m_flowerNoise.SetSeed(seed + 3);
-    m_flowerNoise.SetNoiseType(FastNoiseLite::NoiseType_Perlin);
-    m_flowerNoise.SetFrequency(0.8f);
+void WorldGenerator::configureTerrainPreset(int preset)
+{
+    m_terrainPreset = preset;
+    if (m_terrainPreset < 0 || m_terrainPreset > 2) {
+        m_terrainPreset = 1;
+    }
+    applyNoiseParams();
 }
 
 void WorldGenerator::generateChunk(Chunk &chunk, const ChunkPos &pos)

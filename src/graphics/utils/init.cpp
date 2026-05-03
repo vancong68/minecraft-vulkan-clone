@@ -195,6 +195,7 @@ VkDevice createLogicalDevice(VkPhysicalDevice physicalDevice, VkSurfaceKHR surfa
     vulkan12Features.descriptorBindingVariableDescriptorCount = VK_TRUE;
     vulkan12Features.runtimeDescriptorArray = VK_TRUE;
     vulkan12Features.shaderSampledImageArrayNonUniformIndexing = VK_TRUE;
+    vulkan12Features.shaderUniformBufferArrayNonUniformIndexing = VK_TRUE;
     vulkan12Features.shaderStorageBufferArrayNonUniformIndexing = VK_TRUE;
     vulkan12Features.shaderStorageImageArrayNonUniformIndexing = VK_TRUE;
     vulkan12Features.descriptorBindingUniformBufferUpdateAfterBind = VK_TRUE;

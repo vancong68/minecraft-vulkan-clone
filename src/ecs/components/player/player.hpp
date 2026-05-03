@@ -1,8 +1,10 @@
 #pragma once
 
 #include <cmath>
+#include <array>
 
 #include "ecs/components/component.hpp"
+#include "world/block.hpp"
 
 namespace cmp
 {
@@ -23,6 +25,11 @@ struct Player : public ecs::Component
 
     bool isInWater = false;
     f32 swimSpeed = 3.0f;
+
+    /// Minecraft-style hotbar (1–9) and main inventory (3×9).
+    std::array<wld::BlockType, 9> hotbar{};
+    int hotbarSlot = 0;
+    std::array<wld::BlockType, 27> backpack{};
 };
 
-} // namespace ecs
+} // namespace cmp

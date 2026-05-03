@@ -8,7 +8,7 @@ A Minecraft clone built with Vulkan, compatible with both Windows and Linux.
 
 ### Option 1: Prebuilt Release (Recommended)
 
-1. Go to the [Releases page](https://github.com/raphvrl/vk-minecraft-clone/releases)
+1. Go to the [Releases page](https://github.com/vancong68/minecraft-vulkan-clone/releases)
 2. Find the latest version (e.g., v0.1.0-alpha)
 3. Download the appropriate file for your system:
    - `vulkan-minecraft-windows-vX.X.X.zip` for Windows
@@ -39,7 +39,7 @@ A Minecraft clone built with Vulkan, compatible with both Windows and Linux.
 
 1. Clone the repository with its submodules:
    ```bash
-   git clone --recursive https://github.com/raphvrl/vk-minecraft-clone.git
+   git clone --recursive https://github.com/vancong68/minecraft-vulkan-clone.git
    cd vulkan-minecraft
    ```
 
@@ -52,7 +52,7 @@ A Minecraft clone built with Vulkan, compatible with both Windows and Linux.
    cmake ..
 
    # Build the project
-   cmake --build . --config Release
+   cmake --build "e:/vk-minecraft-clone/build" --config Release 2>&1
    ```
 
 3. Run the game:

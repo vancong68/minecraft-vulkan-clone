@@ -63,4 +63,9 @@ void Camera::rotate(f32 xoffset, f32 yoffset)
     m_pitch = glm::clamp(m_pitch, -89.0f, 89.0f);
 }
 
+void Camera::setFov(f32 degrees)
+{
+    m_fov = glm::clamp(degrees, 45.0f, 110.0f);
+}
+
 } // namespace core

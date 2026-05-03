@@ -1,6 +1,8 @@
 #include "sound_buffer.hpp"
 #include <stb/stb_vorbis.h>
 
+#include <string>
+
 namespace sfx
 {
 

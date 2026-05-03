@@ -39,6 +39,15 @@ public:
         VkPipelineStageFlags dstStageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT
     );
 
+    /// Record layout transition on an in-flight command buffer (no separate submit).
+    void cmdTransitionLayout(
+        VkCommandBuffer cmd,
+        VkImageLayout oldLayout,
+        VkImageLayout newLayout,
+        VkPipelineStageFlags srcStageMask,
+        VkPipelineStageFlags dstStageMask
+    );
+
     void generateMipmaps();
 
     void copyFromBuffer(Buffer &buffer);

@@ -30,6 +30,8 @@ public:
     void handleMouseClick();
     void draw(VkCommandBuffer cmd);
 
+    void setText(std::string text) { m_text = std::move(text); }
+
     bool countain(const glm::vec2 &point) const;
 
 private:

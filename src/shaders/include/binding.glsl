@@ -5,20 +5,13 @@
 
 #define CAMERA_UBO_IDX 0
 
-struct CameraUBO {
+/// Flat std140 block (no nested struct) matches C++ CameraUBO byte-for-byte on all drivers.
+layout(binding = 0, std140) uniform CameraBuffer {
     mat4 view;
     mat4 proj;
     mat4 ortho;
-    vec3 position;
-};
-
-layout(binding = 0) uniform UBOArray {
-    CameraUBO camera;
-} uboArray[];
-
-// layout(binding = 1) uniform SSBOArray {
-    
-// } ssboArray[];
+    vec4 camPosWs;
+} camUbo[];
 
 layout(binding = 2) uniform sampler2D texArr[];
 

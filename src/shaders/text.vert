@@ -25,7 +25,7 @@ layout(location = 1) out vec4 fragColor;
 
 void main()
 {
-    mat4 ortho = uboArray[CAMERA_UBO_IDX].camera.ortho;
+    mat4 ortho = camUbo[CAMERA_UBO_IDX].ortho;
     mat4 model = pco.model;
 
     vec2 pos = positions[gl_VertexIndex];

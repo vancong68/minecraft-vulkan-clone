@@ -30,17 +30,28 @@ void Framebuffer::init(
         m_depthImage = m_device->createImage(
             m_width, m_height,
             m_depthFormat,
-            VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+            VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
             VK_IMAGE_ASPECT_DEPTH_BIT
         );
     }
 
     m_textureID = m_device->addTexture(m_colorImage);
+    if (m_withDepth) {
+        m_depthTextureID = m_device->addTexture(m_depthImage);
+    }
+
+    m_colorLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    m_depthLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 }
 
 void Framebuffer::destroy()
 {
-    m_device->removeResource(m_textureID);
+    if (m_textureID != U32_MAX) {
+        m_device->removeResource(m_textureID);
+    }
+    if (m_depthTextureID != U32_MAX) {
+        m_device->removeResource(m_depthTextureID);
+    }
 
     m_colorImage.destroy();
     if (m_withDepth) {
@@ -72,21 +83,29 @@ void Framebuffer::resize(u32 width, u32 height)
         m_depthImage = m_device->createImage(
             m_width, m_height,
             m_depthFormat,
-            VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+            VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
             VK_IMAGE_ASPECT_DEPTH_BIT
         );
     }
 
     m_textureID = m_device->addTexture(m_colorImage);
+    if (m_withDepth) {
+        m_depthTextureID = m_device->addTexture(m_depthImage);
+    }
+
+    m_colorLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    m_depthLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 }
 
 void Framebuffer::begin(VkCommandBuffer cmd)
 {
     transitionColorLayout(
         cmd,
-        VK_IMAGE_LAYOUT_UNDEFINED,
+        m_colorLayout,
         VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
     );
+    m_colorLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
 
     VkRenderingAttachmentInfoKHR colorAttachmentInfo{};
     colorAttachmentInfo.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO_KHR;
@@ -113,6 +132,13 @@ void Framebuffer::begin(VkCommandBuffer cmd)
         depthAttachmentInfo.clearValue.depthStencil = {1.0f, 0};
         
         renderingInfo.pDepthAttachment = &depthAttachmentInfo;
+
+        transitionDepthLayout(
+            cmd,
+            m_depthLayout,
+            VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL
+        );
+        m_depthLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
     } else {
         renderingInfo.pDepthAttachment = nullptr;
     }
@@ -144,6 +170,16 @@ void Framebuffer::end(VkCommandBuffer cmd)
         VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
         VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
     );
+    m_colorLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+    if (m_withDepth) {
+        transitionDepthLayout(
+            cmd,
+            VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+            VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL
+        );
+        m_depthLayout = VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL;
+    }
 }
 
 void Framebuffer::transitionColorLayout(
@@ -169,6 +205,14 @@ void Framebuffer::transitionColorLayout(
         barrier.srcAccessMask = 0;
         barrier.dstStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
         barrier.dstAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
+    } else if (
+        oldLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL &&
+        newLayout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+    ) {
+        barrier.srcStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
+        barrier.srcAccessMask = VK_ACCESS_2_SHADER_READ_BIT;
+        barrier.dstStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+        barrier.dstAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
     } else if (oldLayout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL && 
                newLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
         barrier.srcStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
@@ -177,6 +221,63 @@ void Framebuffer::transitionColorLayout(
         barrier.dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT;
     } else {
         throw std::runtime_error("Layout transition not supported!");
+    }
+
+    VkDependencyInfoKHR dependencyInfo{};
+    dependencyInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+    dependencyInfo.imageMemoryBarrierCount = 1;
+    dependencyInfo.pImageMemoryBarriers = &barrier;
+
+    vkCmdPipelineBarrier2(cmd, &dependencyInfo);
+}
+
+void Framebuffer::transitionDepthLayout(
+    VkCommandBuffer cmd,
+    VkImageLayout oldLayout,
+    VkImageLayout newLayout
+)
+{
+    VkImageMemoryBarrier2 barrier{};
+    barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+    barrier.image = m_depthImage.getImage();
+    barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+    barrier.subresourceRange.baseMipLevel = 0;
+    barrier.subresourceRange.levelCount = 1;
+    barrier.subresourceRange.baseArrayLayer = 0;
+    barrier.subresourceRange.layerCount = 1;
+    barrier.oldLayout = oldLayout;
+    barrier.newLayout = newLayout;
+
+    if (
+        oldLayout == VK_IMAGE_LAYOUT_UNDEFINED &&
+        newLayout == VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL
+    ) {
+        barrier.srcStageMask = VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT;
+        barrier.srcAccessMask = 0;
+        barrier.dstStageMask = VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT;
+        barrier.dstAccessMask =
+            VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
+            VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+    } else if (
+        oldLayout == VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL &&
+        newLayout == VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL
+    ) {
+        barrier.srcStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
+        barrier.srcAccessMask = VK_ACCESS_2_SHADER_READ_BIT;
+        barrier.dstStageMask = VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT;
+        barrier.dstAccessMask =
+            VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
+            VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+    } else if (
+        oldLayout == VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL &&
+        newLayout == VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL
+    ) {
+        barrier.srcStageMask = VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT;
+        barrier.srcAccessMask = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+        barrier.dstStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
+        barrier.dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT;
+    } else {
+        throw std::runtime_error("Depth layout transition not supported!");
     }
 
     VkDependencyInfoKHR dependencyInfo{};

@@ -25,7 +25,12 @@ void Display::init(Device &device)
         .build();
 
     m_pc.textureID = 0;
+    m_pc.depthTextureID = 0;
+    m_pc.shadowTextureID = 0;
+    m_pc.padding = 0;
     m_pc.color = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);
+    m_pc.sun = glm::vec4(0.5f, 0.25f, 0.0f, 0.0f);
+    m_pc.effects = 3;
 }
 
 void Display::destroy()
@@ -41,9 +46,6 @@ void Display::resize(u32 width, u32 height)
 
 void Display::begin(VkCommandBuffer cmd)
 {
-    VkExtent2D extent = m_device->getExtent();
-    resize(extent.width, extent.height);
-
     m_framebuffer.begin(cmd);
 }
 
@@ -57,6 +59,7 @@ void Display::draw(VkCommandBuffer cmd)
     m_pipeline.bind(cmd);
 
     m_pc.textureID = m_framebuffer.getTextureID();
+    m_pc.depthTextureID = m_framebuffer.getDepthTextureID();
     m_pipeline.push(cmd, m_pc);
 
     vkCmdDraw(cmd, 6, 1, 0, 0);

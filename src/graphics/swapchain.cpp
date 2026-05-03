@@ -73,6 +73,7 @@ void Swapchain::recreate(u32 width, u32 height)
     
     cleanupSwapchain();
     
+    /// IMMEDIATE avoids queued vsync-ish pacing after resize/maximize (init uses IMMEDIATE too).
     m_swapchain = vk::createSwapchain(
         m_device,
         m_physicalDevice,
@@ -81,7 +82,7 @@ void Swapchain::recreate(u32 width, u32 height)
         height,
         m_imageFormat,                 
         VK_COLOR_SPACE_SRGB_NONLINEAR_KHR,
-        VK_PRESENT_MODE_MAILBOX_KHR,
+        VK_PRESENT_MODE_IMMEDIATE_KHR,
         0,                              
         &m_imageFormat,                 
         &m_extent,                      

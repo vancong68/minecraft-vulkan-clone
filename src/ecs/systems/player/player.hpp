@@ -30,11 +30,17 @@ public:
 
     void updateCamera();
 
+    void setInventoryOpenPtr(bool *ptr) { m_inventoryOpen = ptr; }
+    void setThirdPersonPtr(bool *ptr) { m_thirdPerson = ptr; }
+
 private:
     core::Window &m_window;
     core::Camera &m_camera;
     wld::World &m_world;
     gfx::OverlayRenderer &m_overlay;
+
+    bool *m_inventoryOpen = nullptr;
+    bool *m_thirdPerson = nullptr;
 
     EntityID m_playerEntity = ENTITY_NULL;
 

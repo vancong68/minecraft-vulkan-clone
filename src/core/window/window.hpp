@@ -43,6 +43,10 @@ public:
     }
 
     bool isMouseButtonPressed(int b) const { return m_mouseButtons[b]; }
+    bool isMouseButtonJustPressed(int b) const {
+        return m_mouseButtons[static_cast<size_t>(b)]
+            && !m_mouseButtonsPrev[static_cast<size_t>(b)];
+    }
 
 public:
 
@@ -61,6 +65,8 @@ public:
     bool isResized() const { return m_resized; }
     bool isMinimized() const { return m_minimized; }
 
+    void clearResizeFlag() { m_resized = false; }
+
 private:
     GLFWwindow *m_handle;
     u32 m_width;
@@ -73,6 +79,7 @@ private:
     std::array<bool, GLFW_KEY_LAST + 1> m_keys;
     std::array<bool, GLFW_KEY_LAST + 1> m_keysPrev;
     std::array<bool, GLFW_MOUSE_BUTTON_LAST + 1> m_mouseButtons;
+    std::array<bool, GLFW_MOUSE_BUTTON_LAST + 1> m_mouseButtonsPrev;
     
     glm::vec2 m_mousePos;
     glm::vec2 m_mouseRel;

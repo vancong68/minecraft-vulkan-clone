@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstddef>
+
 #include <vector>
 #include <unordered_map>
 #include <memory>
@@ -45,7 +47,23 @@ public:
     void destroy();
 
     void update(const glm::vec3 &playerPos, f32 dt);
-    void render(const core::Camera &camera, VkCommandBuffer cmd);
+    void render(
+        const core::Camera &camera,
+        VkCommandBuffer cmd,
+        const glm::mat4 &lightMatrix,
+        const glm::vec4 &sunDirPacked,
+        u32 shadowMapTextureID,
+        bool shadowsEnabled
+    );
+    void renderShadow(const glm::vec3 &sunDir, VkCommandBuffer cmd);
+
+    static glm::mat4 computeLightMatrix(const glm::vec3 &sunDir);
+
+    u32 getShadowTextureID() const { return m_shadowTextureID; }
+
+    void setTerrainPreset(int preset);
+    void setRenderDistance(int chunkRadius);
+    int getRenderDistance() const { return m_renderDistance; }
 
     BlockType getBlock(int x, int y, int z) const;
     BlockType getBlock(const glm::ivec3 &pos) const {
@@ -82,8 +100,9 @@ private:
 
     void updateMeshe(const ChunkPos &pos);
 
-    static constexpr int RENDER_DISTANCE = 8;
     static constexpr int CHUNKS_PER_TICK = 1;
+
+    int m_renderDistance = 8;
 
     std::queue<ChunkPos> m_pendingChunks;
     std::queue<ChunkPos> m_pendingMeshes;
@@ -100,14 +119,33 @@ private:
     };
 
     std::array<gfx::Pipeline, 3> m_pipelines;
+    gfx::Pipeline m_shadowPipeline;
 
     u32 m_textureID;
+    u32 m_shadowTextureID = U32_MAX;
 
-    struct PushConstants
+    gfx::Image m_shadowImage;
+
+    struct ShadowPushConstants
     {
         alignas(16) glm::mat4 model;
+        alignas(16) glm::mat4 shadowMatrix;
         alignas(4) u32 textureID;
     };
+
+    struct ChunkPushConstants
+    {
+        alignas(16) glm::mat4 model;
+        alignas(16) glm::mat4 shadowMatrix;
+        alignas(16) glm::vec4 sunDir;
+        /// World-space camera position for fog/distance (avoids flaky UBO reads on some GPUs).
+        alignas(16) glm::vec4 camWorldPos;
+        alignas(4) u32 textureID;
+        alignas(4) u32 shadowMapTextureID;
+    };
+
+    static_assert(sizeof(ChunkPushConstants) == 176);
+    static_assert(offsetof(ChunkPushConstants, textureID) == 160);
 
     core::Frustum m_frustum;
 

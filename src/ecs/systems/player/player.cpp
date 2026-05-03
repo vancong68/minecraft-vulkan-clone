@@ -2,6 +2,8 @@
 #include "ecs/ecs.hpp"
 #include "audio/sound_manager.hpp"
 
+#include <cstddef>
+
 namespace sys
 {
 
@@ -43,7 +45,9 @@ void Player::tick(f32 dt)
         return;
     }
 
-    if (m_window.isKeyPressed(GLFW_KEY_W)) {
+    const bool invOpen = m_inventoryOpen && *m_inventoryOpen;
+
+    if (!invOpen && m_window.isKeyPressed(GLFW_KEY_W)) {
         glm::vec3 front = m_camera.getFront();
         front.y = 0.0f;
 
@@ -52,7 +56,7 @@ void Player::tick(f32 dt)
         velocity->position += front * player->moveSpeed;
     }
 
-    if (m_window.isKeyPressed(GLFW_KEY_S)) {
+    if (!invOpen && m_window.isKeyPressed(GLFW_KEY_S)) {
         glm::vec3 front = m_camera.getFront();
         front.y = 0.0f;
 
@@ -61,7 +65,7 @@ void Player::tick(f32 dt)
         velocity->position -= front * player->moveSpeed;
     }
 
-    if (m_window.isKeyPressed(GLFW_KEY_A)) {
+    if (!invOpen && m_window.isKeyPressed(GLFW_KEY_A)) {
         glm::vec3 right = m_camera.getRight();
         right.y = 0.0f;
 
@@ -70,7 +74,7 @@ void Player::tick(f32 dt)
         velocity->position -= right * player->moveSpeed;
     }
 
-    if (m_window.isKeyPressed(GLFW_KEY_D)) {
+    if (!invOpen && m_window.isKeyPressed(GLFW_KEY_D)) {
         glm::vec3 right = m_camera.getRight();
         right.y = 0.0f;
 
@@ -102,7 +106,7 @@ void Player::tick(f32 dt)
 
     m_overlay.setWater(headBlock == wld::BlockType::WATER);
 
-    bool spacePressed = m_window.isKeyPressed(GLFW_KEY_SPACE);
+    bool spacePressed = !invOpen && m_window.isKeyPressed(GLFW_KEY_SPACE);
     if (spacePressed && m_jumpCooldown <= 0.0f) {
         if (collider->isGrounded && !player->isFlying) {
             velocity->position.y = player->jumpForce;
@@ -115,14 +119,16 @@ void Player::tick(f32 dt)
         transform->position.y += player->moveSpeed;
     }
 
-    if (m_window.isKeyPressed(GLFW_KEY_LEFT_SHIFT)) {
+    if (!invOpen && m_window.isKeyPressed(GLFW_KEY_LEFT_SHIFT)) {
         if (player->isFlying) {
             transform->position.y -= player->moveSpeed;
         }
     }
 
-    bool isMoving = std::abs(velocity->position.x) > 0.01f || 
-                    std::abs(velocity->position.z) > 0.01f;
+    bool isMoving = !invOpen && (
+        std::abs(velocity->position.x) > 0.01f ||
+        std::abs(velocity->position.z) > 0.01f
+    );
 
     if (collider->isGrounded && isMoving) {
         m_footstepTimer -= dt;
@@ -188,6 +194,7 @@ void Player::tick(f32 dt)
     m_wasGrounded = collider->isGrounded;
 
     if (
+        !invOpen &&
         m_window.isMouseButtonPressed(GLFW_MOUSE_BUTTON_LEFT) &&
         player->breakCooldown <= 0.0f
     ) {
@@ -221,6 +228,7 @@ void Player::tick(f32 dt)
     }
 
     if (
+        !invOpen &&
         m_window.isMouseButtonPressed(GLFW_MOUSE_BUTTON_RIGHT) &&
         player->placeCooldown <= 0.0f
     ) {
@@ -240,15 +248,16 @@ void Player::tick(f32 dt)
                 return;
             }
 
-            m_world.placeBlock(
-                result.normal,
-                wld::BlockType::COBBLESTONE
-            );
+            const wld::BlockType held =
+                player->hotbar[static_cast<size_t>(player->hotbarSlot)];
+            if (held != wld::BlockType::AIR) {
+                m_world.placeBlock(result.normal, held);
 
-            sfx::SoundManager::get().playPlaceBlock(
-                wld::BlockType::COBBLESTONE,
-                transform->position
-            );
+                sfx::SoundManager::get().playPlaceBlock(
+                    held,
+                    transform->position
+                );
+            }
         }
 
         player->placeCooldown = 0.2f;
@@ -272,9 +281,28 @@ void Player::updateCamera()
 
     if (!player || !transform) return;
 
-    glm::vec3 pos = transform->renderPosition;
-    pos.y += player->eyeHeight;
-    m_camera.setPos(pos);
+    glm::vec3 eye = transform->renderPosition;
+    eye.y += player->eyeHeight;
+
+    const bool tp = m_thirdPerson && *m_thirdPerson && !(m_inventoryOpen && *m_inventoryOpen);
+    if (tp) {
+        glm::vec3 f = m_camera.getFront();
+        f.y = 0.0f;
+        const f32 fl = glm::length(f);
+        if (fl > 1e-4f) {
+            f /= fl;
+        } else {
+            f = glm::vec3(0.0f, 0.0f, -1.0f);
+        }
+        const f32 camBack = 4.25f;
+        m_camera.setPos(eye - f * camBack + glm::vec3(0.0f, 0.52f, 0.0f));
+    } else {
+        m_camera.setPos(eye);
+    }
+
+    if (m_inventoryOpen && *m_inventoryOpen) {
+        return;
+    }
 
     glm::vec2 mouse = m_window.getMouseRel();
     m_camera.rotate(

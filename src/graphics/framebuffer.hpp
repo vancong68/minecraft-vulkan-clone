@@ -39,6 +39,7 @@ public:
     VkFormat getDepthFormat() const { return m_depthFormat; }
 
     u32 getTextureID() const { return m_textureID; }
+    u32 getDepthTextureID() const { return m_depthTextureID; }
 
 private:
     Device *m_device = nullptr;
@@ -53,9 +54,19 @@ private:
     bool m_withDepth = true;
 
     u32 m_textureID = U32_MAX;
+    u32 m_depthTextureID = U32_MAX;
+
+    VkImageLayout m_colorLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    VkImageLayout m_depthLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
 private:
     void transitionColorLayout(
+        VkCommandBuffer cmd,
+        VkImageLayout oldLayout,
+        VkImageLayout newLayout
+    );
+
+    void transitionDepthLayout(
         VkCommandBuffer cmd,
         VkImageLayout oldLayout,
         VkImageLayout newLayout

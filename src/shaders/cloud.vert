@@ -24,11 +24,11 @@ void main()
 {
     vec3 pos = positions[gl_VertexIndex] * 12.0;
 
-    camPos = uboArray[CAMERA_UBO_IDX].camera.position;
+    camPos = camUbo[CAMERA_UBO_IDX].camPosWs.xyz;
     
     mat4 model = pco.model;
-    mat4 view = uboArray[CAMERA_UBO_IDX].camera.view;
-    mat4 proj = uboArray[CAMERA_UBO_IDX].camera.proj;
+    mat4 view = camUbo[CAMERA_UBO_IDX].view;
+    mat4 proj = camUbo[CAMERA_UBO_IDX].proj;
 
     worldPos = (model * vec4(pos, 1.0)).xyz;
     gl_Position = proj * view * vec4(worldPos, 1.0);

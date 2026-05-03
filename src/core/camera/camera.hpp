@@ -23,6 +23,9 @@ public:
 
     void rotate(f32 xoffset, f32 yoffset);
 
+    void setFov(f32 degrees);
+    f32 getFov() const { return m_fov; }
+
     void setPos(const glm::vec3 &pos) { m_pos = pos; }
 
     glm::vec3 getPos() const { return m_pos; }

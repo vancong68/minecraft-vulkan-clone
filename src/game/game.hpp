@@ -16,6 +16,9 @@
 #include "gui/text_renderer.hpp"
 #include "gui/gui.hpp"
 #include "game/game_state.hpp"
+#include "game/game_settings.hpp"
+
+#include "core/types.hpp"
 
 #include "ecs/ecs.hpp"
 #include "ecs/components/physics/transform.hpp"
@@ -46,6 +49,10 @@ private:
     void tick(f32 dt);
     void render();
 
+    void syncSwapchainAndDisplay();
+    void handlePausedSettingsInput();
+    void handleInventoryClick(const glm::vec2 &px);
+
     core::Window m_window;
     core::Camera m_camera;
 
@@ -73,6 +80,15 @@ private:
     f32 m_fps;
 
     GameState m_state = GameState::RUNNING;
+
+    GameSettings m_settings;
+    f32 m_dayPhase = 0.35f;
+
+    bool m_inventoryOpen = false;
+    int m_invClickSlot = -1;
+    EntityID m_playerEntity = ENTITY_NULL;
+
+    bool m_thirdPerson = false;
 
     void updateGui();
 };

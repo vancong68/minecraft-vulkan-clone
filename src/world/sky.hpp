@@ -2,11 +2,8 @@
 
 #include <glm/ext.hpp>
 
-#include <array>
-
 #include "graphics/device.hpp"
 #include "graphics/pipeline.hpp"
-#include "core/camera/camera.hpp"
 
 namespace wld
 {
@@ -18,11 +15,15 @@ public:
     void init(gfx::Device &device);
     void destroy();
 
-    void render(VkCommandBuffer cmd);
+    void render(
+        VkCommandBuffer cmd,
+        f32 dayPhase01,
+        f32 weather01,
+        const glm::vec3 &sunDirectionWorld
+    );
+
 private:
     gfx::Pipeline m_pipeline;
-
-    VkDescriptorSet m_descriptorSet;
 };
 
 } // namespace wld

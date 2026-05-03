@@ -42,8 +42,8 @@ layout(push_constant) uniform PushConstantObject {
 
 void main()
 {
-    mat4 view = uboArray[CAMERA_UBO_IDX].camera.view;
-    mat4 proj = uboArray[CAMERA_UBO_IDX].camera.proj;
+    mat4 view = camUbo[CAMERA_UBO_IDX].view;
+    mat4 proj = camUbo[CAMERA_UBO_IDX].proj;
     mat4 model = pco.model;
 
     gl_Position = proj * view * model * vec4(positions[gl_VertexIndex], 1.0);

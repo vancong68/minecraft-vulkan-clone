@@ -4,6 +4,7 @@
 
 #include <vector>
 #include <memory>
+#include <functional>
 
 #include "core/window/window.hpp"
 #include "graphics/device.hpp"
@@ -12,6 +13,10 @@
 #include "audio/sound_manager.hpp"
 #include "text_renderer.hpp"
 #include "game/game_state.hpp"
+#include "game/game_settings.hpp"
+#include "world/block.hpp"
+
+#include <array>
 
 #include "element.hpp"
 #include "button.hpp"
@@ -24,7 +29,29 @@ struct GameStat
     u32 fps = 0;
     u32 updatedChunks = 0;
     game::GameState state = game::GameState::RUNNING;
+    game::GameSettings settings{};
+    f32 dayPhase01 = 0.35f;
 
+    bool inventoryOpen = false;
+    int hotbarSlot = 0;
+    std::array<wld::BlockType, 9> hotbar{};
+    std::array<wld::BlockType, 27> backpack{};
+};
+
+struct PauseSettingsActions
+{
+    std::function<void()> toggleShadows;
+    std::function<void()> toggleSsao;
+    std::function<void()> toggleGodRays;
+    std::function<void()> toggleWeather;
+    std::function<void()> cycleTerrain;
+    std::function<void()> fovDecrease;
+    std::function<void()> fovIncrease;
+    std::function<void()> timeSlower;
+    std::function<void()> timeFaster;
+    std::function<void()> renderDistanceDecrease;
+    std::function<void()> renderDistanceIncrease;
+    std::function<void()> saveSettings;
 };
 
 class GUI
@@ -40,10 +67,14 @@ public:
     void handleMouseClick();
     void updateStat(const GameStat &gameStat) { m_gameStat = gameStat; }
 
+    /// Unified index: 0–8 hotbar, 9–35 main inventory. -1 if none.
+    int pickInventorySlot(const glm::vec2 &px) const;
+
     void render(VkCommandBuffer cmd);
 
     void initGameElements();
     void initPauseElements();
+    void registerPauseSettingsActions(PauseSettingsActions actions);
 
     void setQuitCallback(CallBackFn callback) { m_quitCallback = callback; }
     void setResumeCallback(CallBackFn callback) { m_resumeCallback = callback; }
@@ -95,6 +126,8 @@ private:
 
     CallBackFn m_quitCallback = nullptr;
     CallBackFn m_resumeCallback = nullptr;
+
+    PauseSettingsActions m_pauseSettings;
 };
 
 } // namespace gui

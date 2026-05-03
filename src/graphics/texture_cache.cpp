@@ -1,5 +1,7 @@
 #include "texture_cache.hpp"
 
+#include <vulkan/vulkan.h>
+
 namespace gfx
 {
 
@@ -23,7 +25,8 @@ void TextureCache::loadTexture(const fs::path &path, const std::string &name)
         return;
     }
 
-    VkFormat format = m_device->getSwapchain().getFormat();
+    /// stb_image uploads RGBA8 in R,G,B,A order; must not use BGRA swapchain formats.
+    const VkFormat format = VK_FORMAT_R8G8B8A8_SRGB;
 
     Image image = m_device->loadImage(
         texturePath,

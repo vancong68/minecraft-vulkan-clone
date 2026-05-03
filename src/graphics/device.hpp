@@ -118,6 +118,9 @@ public:
 
     void waitIdle();
 
+    /// Recreates swapchain and depth buffer from current window size (calls waitIdle internally).
+    void recreateSwapchain();
+
 public:
     VkInstance getInstance() const { return m_instance; }
     VkPhysicalDevice getPhysicalDevice() const { return m_physicalDevice; }
@@ -175,9 +178,6 @@ private:
     std::array<FrameData, MAX_FRAMES_IN_FLIGHT> m_frames;
     u32 m_currentFrame = 0;
     u32 m_imageIndex = 0;
-
-private:
-    void recreateSwapchain();
 
 };
 

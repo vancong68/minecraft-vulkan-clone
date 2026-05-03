@@ -40,6 +40,7 @@ void Window::init(u32 width, u32 height, const std::string &title)
     m_keys.fill(false);
     m_keysPrev.fill(false);
     m_mouseButtons.fill(false);
+    m_mouseButtonsPrev.fill(false);
 
     glfwSetWindowUserPointer(m_handle, this);
 
@@ -60,7 +61,8 @@ void Window::update()
     m_mouseRel = glm::vec2(0.0f);
 
     m_keysPrev = m_keys;
-    
+    m_mouseButtonsPrev = m_mouseButtons;
+
     f32 currentFrame = static_cast<f32>(glfwGetTime());
     m_deltaTime = currentFrame - m_lastFrame;
     m_lastFrame = currentFrame;
@@ -69,6 +71,10 @@ void Window::update()
 
     int width, height;
     glfwGetFramebufferSize(m_handle, &width, &height);
+    if (width > 0 && height > 0) {
+        m_width = static_cast<u32>(width);
+        m_height = static_cast<u32>(height);
+    }
     m_minimized = (width == 0 || height == 0);
 }
 

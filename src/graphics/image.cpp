@@ -5,6 +5,79 @@
 namespace gfx
 {
 
+namespace
+{
+
+bool layoutTransitionAccessMasks(
+    VkImageLayout oldLayout,
+    VkImageLayout newLayout,
+    VkAccessFlags &srcAccessMask,
+    VkAccessFlags &dstAccessMask
+)
+{
+    if (
+        oldLayout == VK_IMAGE_LAYOUT_UNDEFINED &&
+        newLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
+    ) {
+        srcAccessMask = 0;
+        dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        return true;
+    }
+    if (
+        oldLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL &&
+        newLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+    ) {
+        srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        return true;
+    }
+
+    const bool newIsDepthAttachment =
+        newLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL ||
+        newLayout == VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL ||
+        newLayout == VK_IMAGE_LAYOUT_STENCIL_ATTACHMENT_OPTIMAL;
+
+    if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED && newIsDepthAttachment) {
+        srcAccessMask = 0;
+        dstAccessMask =
+            VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
+            VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+        return true;
+    }
+    if (
+        (oldLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL ||
+         oldLayout == VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL) &&
+        newIsDepthAttachment
+    ) {
+        srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        dstAccessMask =
+            VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
+            VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+        return true;
+    }
+
+    const bool oldIsDepthAttachment =
+        oldLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL ||
+        oldLayout == VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL ||
+        oldLayout == VK_IMAGE_LAYOUT_STENCIL_ATTACHMENT_OPTIMAL;
+
+    if (
+        oldIsDepthAttachment &&
+        (newLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL ||
+         newLayout == VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL)
+    ) {
+        srcAccessMask =
+            VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
+            VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+        dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        return true;
+    }
+
+    return false;
+}
+
+} // namespace
+
 void Image::destroy()
 {
     if (m_imageView) {
@@ -64,27 +137,12 @@ void Image::transitionLayout(
     barrier.subresourceRange.baseArrayLayer = 0;
     barrier.subresourceRange.layerCount = 1;
 
-    if (
-        oldLayout == VK_IMAGE_LAYOUT_UNDEFINED &&
-        newLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
-    ) {
-        barrier.srcAccessMask = 0;
-        barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-    } else if (
-        oldLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL &&
-        newLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
-    ) {
-        barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-        barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-    } else if (
-        oldLayout == VK_IMAGE_LAYOUT_UNDEFINED &&
-        newLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL
-    ) {
-        barrier.srcAccessMask = 0;
-        barrier.dstAccessMask = 
-            VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | 
-            VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-    } else {
+    if (!layoutTransitionAccessMasks(
+            oldLayout,
+            newLayout,
+            barrier.srcAccessMask,
+            barrier.dstAccessMask
+        )) {
         throw std::invalid_argument("Unsupported layout transition!");
     }
 
@@ -99,6 +157,49 @@ void Image::transitionLayout(
     );
 
     m_device->endSingleTimeCommands(commandBuffer);
+
+    m_layout = newLayout;
+}
+
+void Image::cmdTransitionLayout(
+    VkCommandBuffer cmd,
+    VkImageLayout oldLayout,
+    VkImageLayout newLayout,
+    VkPipelineStageFlags srcStageMask,
+    VkPipelineStageFlags dstStageMask
+)
+{
+    VkImageMemoryBarrier barrier = {};
+    barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    barrier.oldLayout = oldLayout;
+    barrier.newLayout = newLayout;
+    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.image = m_image;
+    barrier.subresourceRange.aspectMask = m_aspectFlags;
+    barrier.subresourceRange.baseMipLevel = 0;
+    barrier.subresourceRange.levelCount = m_mipLevels;
+    barrier.subresourceRange.baseArrayLayer = 0;
+    barrier.subresourceRange.layerCount = 1;
+
+    if (!layoutTransitionAccessMasks(
+            oldLayout,
+            newLayout,
+            barrier.srcAccessMask,
+            barrier.dstAccessMask
+        )) {
+        throw std::invalid_argument("Unsupported layout transition!");
+    }
+
+    vkCmdPipelineBarrier(
+        cmd,
+        srcStageMask,
+        dstStageMask,
+        0,
+        0, nullptr,
+        0, nullptr,
+        1, &barrier
+    );
 
     m_layout = newLayout;
 }
