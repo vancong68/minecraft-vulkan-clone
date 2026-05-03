@@ -52,7 +52,7 @@ A Minecraft clone built with Vulkan, compatible with both Windows and Linux.
    cmake ..
 
    # Build the project
-   cmake --build .\build --config Release
+   cmake --build .\ --config Release
    ```
 
 3. Run the game:
