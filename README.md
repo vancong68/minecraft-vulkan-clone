@@ -40,7 +40,7 @@ A Minecraft clone built with Vulkan, compatible with both Windows and Linux.
 1. Clone the repository with its submodules:
    ```bash
    git clone --recursive https://github.com/vancong68/minecraft-vulkan-clone.git
-   cd vulkan-minecraft
+   cd minecraft-vulkan-clone
    ```
 
 2. Build with CMake:
