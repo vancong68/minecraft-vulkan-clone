@@ -85,6 +85,7 @@ A Minecraft clone built with Vulkan, compatible with both Windows and Linux.
 - 3D spatial audio
 
 ## Disclaimer
+# Special thanks and inspired to this [page](https://github.com/raphvrl/vk-minecraft-clone)
 
 This project is a fan-made clone created for educational purposes only. It is not affiliated with, endorsed by, or connected to Mojang or Microsoft in any way.
 
