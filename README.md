@@ -37,6 +37,8 @@ A Minecraft clone built with Vulkan, compatible with both Windows and Linux.
 
 #### Build Steps
 
+**Build command:** `mkdir build && cd build && cmake .. && cmake --build . --config Release`
+
 1. Clone the repository with its submodules:
    ```bash
    git clone --recursive https://github.com/vancong68/minecraft-vulkan-clone.git

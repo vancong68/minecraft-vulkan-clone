@@ -63,6 +63,29 @@ else()
     )
     FetchContent_MakeAvailable(glfw)
 endif()
+# Fetch external dependencies
+include(FetchContent)
+
+FetchContent_Declare(glm URL https://github.com/g-truc/glm/archive/refs/heads/master.zip)
+FetchContent_MakeAvailable(glm)
+
+FetchContent_Declare(stb URL https://github.com/nothings/stb/archive/refs/heads/master.zip)
+FetchContent_MakeAvailable(stb)
+
+FetchContent_Declare(stb_vorbis URL https://github.com/exelotl/ooc-stb-vorbis/archive/refs/heads/master.zip)
+FetchContent_MakeAvailable(stb_vorbis)
+
+FetchContent_Declare(vma URL https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator/archive/refs/heads/master.zip)
+FetchContent_MakeAvailable(vma)
+
+FetchContent_Declare(tomplusplus URL https://github.com/marzer/tomlplusplus/archive/refs/heads/master.zip)
+FetchContent_MakeAvailable(tomplusplus)
+
+FetchContent_Declare(fastnoise URL https://github.com/Auburn/FastNoiseLite/archive/refs/heads/master.zip)
+FetchContent_MakeAvailable(fastnoise)
+
+FetchContent_Declare(openal URL https://github.com/kcat/openal-soft/archive/refs/heads/master.zip)
+FetchContent_MakeAvailable(openal)
 
 add_compile_definitions(GLM_ENABLE_EXPERIMENTAL GLM_FORCE_DEPTH_ZERO_TO_ONE)
 
@@ -100,7 +123,7 @@ if(WIN32)
         message(STATUS "Created Windows icon resource file pointing to your existing app.ico")
     endif()
 
-    target_sources(vulkan-minecraft PRIVATE "${APP_ICON_RESOURCE_WINDOWS}")
+    target_sources(vulkan-minecraft PRIVATE "${stb_vorbis_SOURCE_DIR}/source/stb/stb_vorbis.c")
 
     add_custom_command(TARGET vulkan-minecraft POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
@@ -158,12 +181,12 @@ endif()
 
 target_include_directories(vulkan-minecraft PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
-        ${CMAKE_CURRENT_SOURCE_DIR}/lib/stb
-        ${CMAKE_CURRENT_SOURCE_DIR}/lib/stb-vorbis/source
-        ${CMAKE_CURRENT_SOURCE_DIR}/lib/glm
-        ${CMAKE_CURRENT_SOURCE_DIR}/lib/fastnoise/Cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/lib/tomplusplus/include
-        ${CMAKE_CURRENT_SOURCE_DIR}/lib/vma/include
+        ${stb_SOURCE_DIR}
+        ${stb_vorbis_SOURCE_DIR}/source
+        ${glm_SOURCE_DIR}
+        ${fastnoise_SOURCE_DIR}/Cpp
+        ${tomplusplus_SOURCE_DIR}/include
+        ${vma_SOURCE_DIR}/include
 )
 
 # stb_vorbis STATIC "${CMAKE_CURRENT_SOURCE_DIR}/lib/stb/stb_vorbis.c" - commented due to missing file
