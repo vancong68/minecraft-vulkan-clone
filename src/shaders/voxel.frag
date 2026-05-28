@@ -38,10 +38,10 @@ int posMod(int a, int b)
 
 uint getChunkSlot(int chunkX, int chunkZ)
 {
-    uint gridId = pco.chunkGridSsboId;
-    uint originX_u = ssboArr[gridId].data[0];
-    uint originZ_u = ssboArr[gridId].data[1];
-    uint gridSize = ssboArr[gridId].data[2];
+    uint gridId = nonuniformEXT(pco.chunkGridSsboId);
+    uint originX_u = ssboArr[nonuniformEXT(gridId)].data[0];
+    uint originZ_u = ssboArr[nonuniformEXT(gridId)].data[1];
+    uint gridSize = ssboArr[nonuniformEXT(gridId)].data[2];
 
     int originX = int(originX_u);
     int originZ = int(originZ_u);
@@ -52,7 +52,7 @@ uint getChunkSlot(int chunkX, int chunkZ)
     if (relX >= int(gridSize) || relZ >= int(gridSize)) return INVALID_SLOT;
 
     uint idx = uint(relZ) * gridSize + uint(relX);
-    return ssboArr[gridId].data[4u + idx];
+    return ssboArr[nonuniformEXT(gridId)].data[4u + idx];
 }
 
 uint sampleVoxelPacked(ivec3 worldVoxel)
@@ -73,9 +73,9 @@ uint sampleVoxelPacked(ivec3 worldVoxel)
     int localZ = posMod(worldVoxel.z, CHUNK_SIZE);
     int localIndex = worldVoxel.y * (CHUNK_SIZE * CHUNK_SIZE) + localZ * CHUNK_SIZE + localX;
 
-    uint atlasId = pco.voxelAtlasSsboId;
+    uint atlasId = nonuniformEXT(pco.voxelAtlasSsboId);
     uint base = slot * uint(VOXELS_PER_CHUNK);
-    return ssboArr[atlasId].data[base + uint(localIndex)];
+    return ssboArr[nonuniformEXT(atlasId)].data[base + uint(localIndex)];
 }
 
 uint sampleBlockId(ivec3 worldVoxel)
@@ -86,7 +86,8 @@ uint sampleBlockId(ivec3 worldVoxel)
 vec2 getFaceUV(uint blockId, uint faceId, vec2 faceFrac)
 {
     // Face UV table: packed (x | (y<<16)) per [blockId*6 + faceId].
-    uint uvPacked = ssboArr[pco.blockUvSsboId].data[blockId * 6u + faceId];
+    uint uvId = nonuniformEXT(pco.blockUvSsboId);
+    uint uvPacked = ssboArr[nonuniformEXT(uvId)].data[blockId * 6u + faceId];
     uint tileX = uvPacked & 0xffffu;
     uint tileY = (uvPacked >> 16u) & 0xffffu;
 
@@ -202,7 +203,7 @@ void main()
     else { faceId = 4u; faceFrac = vec2(local.x, local.z); }                             // TOP
 
     vec2 uv = getFaceUV(hitBlock, faceId, faceFrac);
-    vec3 albedo = texture(texArr[pco.terrainTextureId], uv).rgb;
+    vec3 albedo = texture(texArr[nonuniformEXT(pco.terrainTextureId)], uv).rgb;
 
     vec3 n = normalize(vec3(hitNormal));
     vec3 sunDir = normalize(pco.sunDir_ws.xyz);

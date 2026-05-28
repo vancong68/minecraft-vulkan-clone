@@ -109,7 +109,7 @@ private:
     u32 addResourceInternal(
         ResourceType type,
         u32 binding,
-        u32 localIndex,
+        u32 &localIndex,
         u32 maxCount
     );
     u32 getResourceBaseIndex(ResourceType type) const;

@@ -158,14 +158,16 @@ u32 BindlessManager::addUBO(
     );
 
     if (handle != ~0u) {
+        const u32 globalIndex = getGlobalIndex(ResourceType::UBO, getLocalIndexFromHandle(handle));
         std::lock_guard<std::mutex> lock(m_mutex);
 
-        m_resources[handle].buffer = buffer.getBuffer();
-        m_resources[handle].offset = offset;
-        m_resources[handle].range = range;
-        m_resources[handle].isDirty = true;
+        auto &resource = m_resources[globalIndex];
+        resource.buffer = buffer.getBuffer();
+        resource.offset = offset;
+        resource.range = range;
+        resource.isDirty = true;
 
-        m_dirtyResources.push_back(handle);
+        m_dirtyResources.push_back(globalIndex);
     }
 
     return handle;
@@ -189,14 +191,16 @@ u32 BindlessManager::addSSBO(
     );
 
     if (handle != ~0u) {
+        const u32 globalIndex = getGlobalIndex(ResourceType::SSBO, getLocalIndexFromHandle(handle));
         std::lock_guard<std::mutex> lock(m_mutex);
 
-        m_resources[handle].buffer = buffer.getBuffer();
-        m_resources[handle].offset = offset;
-        m_resources[handle].range = range;
-        m_resources[handle].isDirty = true;
+        auto &resource = m_resources[globalIndex];
+        resource.buffer = buffer.getBuffer();
+        resource.offset = offset;
+        resource.range = range;
+        resource.isDirty = true;
 
-        m_dirtyResources.push_back(handle);
+        m_dirtyResources.push_back(globalIndex);
     }
 
     return handle;
@@ -224,13 +228,15 @@ u32 BindlessManager::addTexture(
     );
 
     if (handle != ~0u) {
+        const u32 globalIndex = getGlobalIndex(ResourceType::TEXTURE, getLocalIndexFromHandle(handle));
         std::lock_guard<std::mutex> lock(m_mutex);
 
-        m_resources[handle].imageView = image.getImageView();
-        m_resources[handle].sampler = sampler;
-        m_resources[handle].isDirty = true;
+        auto &resource = m_resources[globalIndex];
+        resource.imageView = image.getImageView();
+        resource.sampler = sampler;
+        resource.isDirty = true;
 
-        m_dirtyResources.push_back(handle);
+        m_dirtyResources.push_back(globalIndex);
     }
 
     return handle;
@@ -240,11 +246,19 @@ void BindlessManager::removeResource(u32 id)
 {
     std::lock_guard<std::mutex> lock(m_mutex);
 
-    if (id >= m_resources.size() || !m_resources[id].isUsed) {
+    if (id == ~0u) {
         return;
     }
 
-    m_resources[id] = ResourceSlot{};
+    ResourceType type = getTypeFromHandle(id);
+    u32 localIndex = getLocalIndexFromHandle(id);
+    u32 globalIndex = getGlobalIndex(type, localIndex);
+
+    if (globalIndex >= m_resources.size() || !m_resources[globalIndex].isUsed) {
+        return;
+    }
+
+    m_resources[globalIndex] = ResourceSlot{};
 }
 
 void BindlessManager::updateTexture(u32 id, const Image &image, VkSampler sampler)
@@ -260,15 +274,19 @@ void BindlessManager::updateTexture(u32 id, const Image &image, VkSampler sample
 
     std::lock_guard<std::mutex> lock(m_mutex);
 
-    if (id >= m_resources.size() || !m_resources[id].isUsed
-        || m_resources[id].type != ResourceType::TEXTURE) {
+    ResourceType type = getTypeFromHandle(id);
+    u32 localIndex = getLocalIndexFromHandle(id);
+    u32 globalIndex = getGlobalIndex(type, localIndex);
+
+    if (globalIndex >= m_resources.size() || !m_resources[globalIndex].isUsed
+        || m_resources[globalIndex].type != ResourceType::TEXTURE) {
         return;
     }
 
-    m_resources[id].imageView = imageView;
-    m_resources[id].sampler = sampler;
-    m_resources[id].isDirty = true;
-    m_dirtyResources.push_back(id);
+    m_resources[globalIndex].imageView = imageView;
+    m_resources[globalIndex].sampler = sampler;
+    m_resources[globalIndex].isDirty = true;
+    m_dirtyResources.push_back(globalIndex);
 }
 
 void BindlessManager::update()
@@ -363,16 +381,52 @@ u32 BindlessManager::addResourceInternal(
         return ~0u;
     }
 
-    u32 index = nextIndex;
+    u32 localIndex = nextIndex;
+    u32 globalIndex = getGlobalIndex(type, localIndex);
 
-    m_resources[index].type = type;
-    m_resources[index].binding = binding;
-    m_resources[index].arrayIndex = nextIndex;
-    m_resources[index].isUsed = true;
+    auto &resource = m_resources[globalIndex];
+    resource.type = type;
+    resource.binding = binding;
+    resource.arrayIndex = localIndex;
+    resource.isUsed = true;
 
     nextIndex++;
 
-    return index;
+    return makeHandle(type, localIndex);
+}
+
+u32 BindlessManager::getResourceBaseIndex(ResourceType type) const
+{
+    switch (type) {
+        case ResourceType::UBO:
+            return 0;
+        case ResourceType::SSBO:
+            return MAX_UBOS;
+        case ResourceType::TEXTURE:
+            return MAX_UBOS + MAX_SSBOS;
+        default:
+            return 0;
+    }
+}
+
+u32 BindlessManager::makeHandle(ResourceType type, u32 index)
+{
+    return (static_cast<u32>(type) << 30) | (index & HANDLE_INDEX_MASK);
+}
+
+BindlessManager::ResourceType BindlessManager::getTypeFromHandle(u32 handle)
+{
+    return static_cast<ResourceType>((handle & HANDLE_TYPE_MASK) >> 30);
+}
+
+u32 BindlessManager::getLocalIndexFromHandle(u32 handle)
+{
+    return handle & HANDLE_INDEX_MASK;
+}
+
+u32 BindlessManager::getGlobalIndex(ResourceType type, u32 localIndex)
+{
+    return getResourceBaseIndex(type) + localIndex;
 }
 
 } // namespace gfx
