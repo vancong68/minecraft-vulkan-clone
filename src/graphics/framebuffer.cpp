@@ -67,7 +67,14 @@ void Framebuffer::resize(u32 width, u32 height)
 
     m_device->waitIdle();
 
-    destroy();
+    const u32 colorTexId = m_textureID;
+    const u32 depthTexId = m_depthTextureID;
+    const bool reuseBindlessIds = colorTexId != U32_MAX;
+
+    m_colorImage.destroy();
+    if (m_withDepth) {
+        m_depthImage.destroy();
+    }
 
     m_width = width;
     m_height = height;
@@ -88,9 +95,18 @@ void Framebuffer::resize(u32 width, u32 height)
         );
     }
 
-    m_textureID = m_device->addTexture(m_colorImage);
-    if (m_withDepth) {
-        m_depthTextureID = m_device->addTexture(m_depthImage);
+    if (reuseBindlessIds) {
+        m_textureID = colorTexId;
+        m_depthTextureID = depthTexId;
+        m_device->updateTexture(m_textureID, m_colorImage);
+        if (m_withDepth) {
+            m_device->updateTexture(m_depthTextureID, m_depthImage);
+        }
+    } else {
+        m_textureID = m_device->addTexture(m_colorImage);
+        if (m_withDepth) {
+            m_depthTextureID = m_device->addTexture(m_depthImage);
+        }
     }
 
     m_colorLayout = VK_IMAGE_LAYOUT_UNDEFINED;

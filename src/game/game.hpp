@@ -7,6 +7,9 @@
 #include "graphics/gpu_data.hpp"
 #include "graphics/texture_cache.hpp"
 #include "graphics/display.hpp"
+#include "graphics/voxel_renderer.hpp"
+#include "graphics/ssao_pass.hpp"
+#include "graphics/godrays_pass.hpp"
 #include "audio/sound_manager.hpp"
 #include "world/world.hpp"
 #include "world/sky.hpp"
@@ -60,6 +63,9 @@ private:
     gfx::GPUData m_gpuData;
     gfx::TextureCache m_textureCache;
     gfx::Display m_display;
+    gfx::VoxelRenderer m_voxelRenderer;
+    gfx::SsaoPass m_ssaoPass;
+    gfx::GodRaysPass m_godRaysPass;
 
     wld::World m_world;
     wld::Sky m_sky;

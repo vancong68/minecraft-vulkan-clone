@@ -12,7 +12,7 @@ struct GameSettings
     f32 fov = 85.0f;
     bool shadows = true;
     bool ssao = false;
-    bool godRays = true;
+    bool godRays = false;
     bool weather = false;
     /// 0 = flat, 1 = default, 2 = mountains (affects newly generated chunks)
     int terrainPreset = 1;

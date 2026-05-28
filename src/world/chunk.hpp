@@ -51,6 +51,7 @@ class Chunk
 public:
     static constexpr int CHUNK_SIZE = 16;
     static constexpr int CHUNK_HEIGHT = 128;
+    static constexpr int VOXELS_PER_CHUNK = CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE;
 
     Chunk(World &world, const ChunkPos &pos);
 
@@ -71,13 +72,16 @@ public:
 
     u8 getLight(int x, int y, int z) const;
 
+    const BlockType *blockData() const { return m_blocks.data(); }
+    const u8 *lightData() const { return m_lights.data(); }
+    const ChunkPos &pos() const { return m_pos; }
     
 private:
     World &m_world;
     ChunkPos m_pos;
 
-    std::array<BlockType, CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE> m_blocks;
-    std::array<u8, CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE> m_lights;
+    std::array<BlockType, VOXELS_PER_CHUNK> m_blocks;
+    std::array<u8, VOXELS_PER_CHUNK> m_lights;
 
     int getIndex(int x, int y, int z) const {
         return y * CHUNK_SIZE * CHUNK_SIZE + z * CHUNK_SIZE + x;

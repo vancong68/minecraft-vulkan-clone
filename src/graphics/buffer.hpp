@@ -26,6 +26,7 @@ public:
 
     void *map();
     void unmap();
+    void flushMappedRange(VkDeviceSize offset, VkDeviceSize size);
 
     template<typename T>
     void uploadData(const T *data, u32 count);

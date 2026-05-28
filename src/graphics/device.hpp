@@ -111,6 +111,15 @@ public:
         m_bindlessManager.removeResource(id);
     }
 
+    void updateTexture(
+        u32 id,
+        const Image &image,
+        VkSampler sampler = VK_NULL_HANDLE
+    )
+    {
+        m_bindlessManager.updateTexture(id, image, sampler);
+    }
+
     void update()
     {
         m_bindlessManager.update();

@@ -1,6 +1,8 @@
 #include "world.hpp"
 
+#include "core/debug_log.hpp"
 #include <algorithm>
+#include <cstring>
 #include <glm/gtc/matrix_transform.hpp>
 
 namespace wld
@@ -37,108 +39,28 @@ void World::init(gfx::Device &device, gfx::TextureCache &textureCache)
     m_device = &device;
 
     m_playerChunkPos = {-1, -1};
-
-    m_textureID = textureCache.getTextureID("terrain");
-
-    auto binding = ChunkMesh::Vertex::getBindingDescription();
-    auto attributes = ChunkMesh::Vertex::getAttributeDescriptions();
-
-    m_pipelines[P_OPAQUE] = gfx::Pipeline::Builder(*m_device)
-        .setShader("chunk.vert.spv", VK_SHADER_STAGE_VERTEX_BIT)
-        .setShader("chunk.frag.spv", VK_SHADER_STAGE_FRAGMENT_BIT)
-        .setVertexInput({
-            &binding,
-            attributes.data(),
-            attributes.size()
-        })
-        .setPushConstant(sizeof(ChunkPushConstants))
-        .setDepthTest(true)
-        .setDepthWrite(true)
-        .setCull(true)
-        .build();
-
-    m_pipelines[P_TRANSPARENT] = gfx::Pipeline::Builder(*m_device)
-        .setShader("chunk.vert.spv", VK_SHADER_STAGE_VERTEX_BIT)
-        .setShader("chunk.frag.spv", VK_SHADER_STAGE_FRAGMENT_BIT)
-        .setVertexInput({
-            &binding,
-            attributes.data(),
-            attributes.size()
-        })
-        .setPushConstant(sizeof(ChunkPushConstants))
-        .setCullMode(VK_CULL_MODE_NONE)
-        .setBlending(true)
-        .setDepthTest(true)
-        .setDepthWrite(true)
-        .build();
-
-    m_pipelines[P_CROSS] = gfx::Pipeline::Builder(*m_device)
-        .setShader("chunk.vert.spv", VK_SHADER_STAGE_VERTEX_BIT)
-        .setShader("chunk.frag.spv", VK_SHADER_STAGE_FRAGMENT_BIT)
-        .setVertexInput({
-            &binding,
-            attributes.data(),
-            attributes.size()
-        })
-        .setPushConstant(sizeof(ChunkPushConstants))
-        .setCullMode(VK_CULL_MODE_NONE)
-        .setBlending(false)
-        .setDepthTest(true)
-        .setDepthWrite(true)
-        .build();
-
-    // Create shadow map
-    m_shadowImage = m_device->createImage(
-        2048, 2048,
-        VK_FORMAT_D32_SFLOAT,
-        VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-        VK_IMAGE_ASPECT_DEPTH_BIT
-    );
-    m_shadowTextureID = m_device->addTexture(m_shadowImage);
-
-    // Create shadow pipeline
-    m_shadowPipeline = gfx::Pipeline::Builder(*m_device)
-        .setShader("shadow.vert.spv", VK_SHADER_STAGE_VERTEX_BIT)
-        .setShader("shadow.frag.spv", VK_SHADER_STAGE_FRAGMENT_BIT)
-        .setVertexInput({
-            &binding,
-            attributes.data(),
-            attributes.size()
-        })
-        .setPushConstant(sizeof(ShadowPushConstants))
-        .setDepthTest(true)
-        .setDepthWrite(true)
-        .setCull(true)
-        .build();
+    UNUSED(textureCache);
 
     m_chunks.reserve(static_cast<size_t>(m_renderDistance) * static_cast<size_t>(m_renderDistance) * 4);
-    m_meshes.reserve(static_cast<size_t>(m_renderDistance) * static_cast<size_t>(m_renderDistance) * 4);
 
     m_generator.init(0);
+
+    startChunkThreads();
+    initGpuVoxelData();
 }
 
 void World::destroy()
 {
-    for (auto &pipeline : m_pipelines) {
-        pipeline.destroy();
-    }
-    m_shadowPipeline.destroy();
-
-    if (m_shadowTextureID != U32_MAX) {
-        m_device->removeResource(m_shadowTextureID);
-        m_shadowImage.destroy();
-    }
-
-    for (auto &[pos, mesh] : m_meshes) {
-        mesh->destroy();
-    }
+    destroyGpuVoxelData();
+    stopChunkThreads();
 
     m_chunks.clear();
-    m_meshes.clear();
 }
 
 void World::update(const glm::vec3 &playerPos, f32 dt)
 {
+    pollCompletedChunkGen();
+
     ChunkPos newPos = {
         static_cast<i32>(playerPos.x) / Chunk::CHUNK_SIZE,
         static_cast<i32>(playerPos.z) / Chunk::CHUNK_SIZE
@@ -149,7 +71,7 @@ void World::update(const glm::vec3 &playerPos, f32 dt)
 
     if (time >= 1.0f) {
         time = 0.0f;
-        m_updatedChunks = m_pendingChunks.size() + m_pendingMeshes.size();
+        m_updatedChunks = m_pendingChunks.size();
     }
     
     const int rd = m_renderDistance;
@@ -162,7 +84,6 @@ void World::update(const glm::vec3 &playerPos, f32 dt)
     if (newPos != m_playerChunkPos || m_pendingChunks.empty()) {
         std::queue<ChunkPos> empty;
         std::swap(m_pendingChunks, empty);
-        std::swap(m_pendingMeshes, empty);
 
         for (int x = -rd; x <= rd; x++) {
             for (int z = -rd; z <= rd; z++) {
@@ -202,6 +123,13 @@ void World::update(const glm::vec3 &playerPos, f32 dt)
         }
 
         m_playerChunkPos = newPos;
+
+        rebuildGpuChunkGridHeaderAndClear();
+        for (const auto &[pos, chunk] : m_chunks) {
+            if (auto it = m_gpuChunkSlotByPos.find(pos); it != m_gpuChunkSlotByPos.end()) {
+                setGpuChunkGridSlot(pos, it->second);
+            }
+        }
     }
 
     int chunksLoaded = 0;
@@ -213,224 +141,10 @@ void World::update(const glm::vec3 &playerPos, f32 dt)
             !isChunkLoaded(pos) &&
             m_chunksNeeded.find(pos) != m_chunksNeeded.end()
         ) {
-            loadChunks(pos);
-            
-            m_pendingMeshes.push(pos);
-            
-            ChunkPos neighbors[4] = {
-                {pos.x - 1, pos.z},
-                {pos.x + 1, pos.z},
-                {pos.x, pos.z - 1},
-                {pos.x, pos.z + 1}
-            };
-            
-            for (const auto& neighborPos : neighbors) {
-                if (
-                    isChunkLoaded(neighborPos)
-                    && m_chunksNeeded.find(neighborPos) != m_chunksNeeded.end()
-                ) {
-                    m_pendingMeshes.push(neighborPos);
-                }
-            }
-            
+            enqueueChunkGen(pos);
             chunksLoaded++;
         }
     }
-
-    while (!m_pendingMeshes.empty()) {
-        ChunkPos pos = m_pendingMeshes.front();
-        m_pendingMeshes.pop();
-
-        if (isChunkLoaded(pos)) {
-            updateMeshe(pos);
-        }
-    }
-}
-
-void World::render(
-    const core::Camera &camera,
-    VkCommandBuffer cmd,
-    const glm::mat4 &lightMatrix,
-    const glm::vec4 &sunDirPacked,
-    u32 shadowMapTextureID,
-    bool shadowsEnabled
-)
-{
-    m_frustum = core::Frustum::fromViewProj(
-        camera.getView(),
-        camera.getProj()
-    );
-
-    const u32 shadowTex = shadowsEnabled ? shadowMapTextureID : U32_MAX;
-
-    m_pipelines[P_OPAQUE].bind(cmd);
-
-    for (const auto &[pos, mesh] : m_meshes) {
-        f32 x = static_cast<f32>(pos.x * Chunk::CHUNK_SIZE);
-        f32 z = static_cast<f32>(pos.z * Chunk::CHUNK_SIZE);
-
-        glm::vec3 min(x, 0.0f, z);
-        glm::vec3 max(
-            x + Chunk::CHUNK_SIZE,
-            Chunk::CHUNK_HEIGHT,
-            z + Chunk::CHUNK_SIZE
-        );
-
-        if (!m_frustum.isBoxVisible(min, max)) {
-            continue;
-        }
-
-        ChunkPushConstants pc = {
-            .model = glm::translate(glm::mat4(1.0f), {x, 0.0f, z}),
-            .shadowMatrix = lightMatrix,
-            .sunDir = sunDirPacked,
-            .camWorldPos = glm::vec4(camera.getPos(), 0.0f),
-            .textureID = m_textureID,
-            .shadowMapTextureID = shadowTex,
-        };
-
-        m_pipelines[P_OPAQUE].push(cmd, pc);
-
-        mesh->drawOpaque(cmd);
-    }
-
-    m_pipelines[P_TRANSPARENT].bind(cmd);
-
-    for (const auto &[pos, mesh] : m_meshes) {
-        f32 x = static_cast<f32>(pos.x * Chunk::CHUNK_SIZE);
-        f32 z = static_cast<f32>(pos.z * Chunk::CHUNK_SIZE);
-
-        glm::vec3 min(x, 0.0f, z);
-        glm::vec3 max(
-            x + Chunk::CHUNK_SIZE,
-            Chunk::CHUNK_HEIGHT,
-            z + Chunk::CHUNK_SIZE
-        );
-
-        if (!m_frustum.isBoxVisible(min, max)) {
-            continue;
-        }
-
-        ChunkPushConstants pc = {
-            .model = glm::translate(glm::mat4(1.0f), {x, 0.0f, z}),
-            .shadowMatrix = lightMatrix,
-            .sunDir = sunDirPacked,
-            .camWorldPos = glm::vec4(camera.getPos(), 0.0f),
-            .textureID = m_textureID,
-            .shadowMapTextureID = shadowTex,
-        };
-
-        m_pipelines[P_TRANSPARENT].push(cmd, pc);
-
-        mesh->drawTransparent(cmd);
-    }
-
-    m_pipelines[P_CROSS].bind(cmd);
-
-    for (const auto &[pos, mesh] : m_meshes) {
-        f32 x = static_cast<f32>(pos.x * Chunk::CHUNK_SIZE);
-        f32 z = static_cast<f32>(pos.z * Chunk::CHUNK_SIZE);
-
-        glm::vec3 min(x, 0.0f, z);
-        glm::vec3 max(
-            x + Chunk::CHUNK_SIZE,
-            Chunk::CHUNK_HEIGHT,
-            z + Chunk::CHUNK_SIZE
-        );
-
-        if (!m_frustum.isBoxVisible(min, max)) {
-            continue;
-        }
-
-        ChunkPushConstants pc = {
-            .model = glm::translate(glm::mat4(1.0f), {x, 0.0f, z}),
-            .shadowMatrix = lightMatrix,
-            .sunDir = sunDirPacked,
-            .camWorldPos = glm::vec4(camera.getPos(), 0.0f),
-            .textureID = m_textureID,
-            .shadowMapTextureID = shadowTex,
-        };
-
-        m_pipelines[P_CROSS].push(cmd, pc);
-
-        mesh->drawCross(cmd);
-    }
-}
-
-void World::renderShadow(const glm::vec3 &sunDir, VkCommandBuffer cmd)
-{
-    glm::mat4 lightSpaceMatrix = computeLightMatrix(sunDir);
-
-    const VkImageLayout shadowBefore = m_shadowImage.getLayout();
-    m_shadowImage.cmdTransitionLayout(
-        cmd,
-        shadowBefore,
-        VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
-        shadowBefore == VK_IMAGE_LAYOUT_UNDEFINED
-            ? VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT
-            : VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, // DEPTH_READ_ONLY after previous frame
-        VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT
-    );
-
-    VkRenderingAttachmentInfoKHR depthAttachmentInfo{};
-    depthAttachmentInfo.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO_KHR;
-    depthAttachmentInfo.imageView = m_shadowImage.getImageView();
-    depthAttachmentInfo.imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
-    depthAttachmentInfo.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    depthAttachmentInfo.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-    depthAttachmentInfo.clearValue.depthStencil = {1.0f, 0};
-
-    VkRenderingInfoKHR renderingInfo{};
-    renderingInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO_KHR;
-    renderingInfo.renderArea = {{0, 0}, {2048, 2048}};
-    renderingInfo.layerCount = 1;
-    renderingInfo.pDepthAttachment = &depthAttachmentInfo;
-
-    vkCmdBeginRendering(cmd, &renderingInfo);
-
-    VkViewport viewport{};
-    viewport.x = 0.0f;
-    viewport.y = 0.0f;
-    viewport.width = 2048.0f;
-    viewport.height = 2048.0f;
-    viewport.minDepth = 0.0f;
-    viewport.maxDepth = 1.0f;
-
-    VkRect2D scissor{};
-    scissor.offset = {0, 0};
-    scissor.extent = {2048, 2048};
-
-    vkCmdSetViewport(cmd, 0, 1, &viewport);
-    vkCmdSetScissor(cmd, 0, 1, &scissor);
-
-    m_shadowPipeline.bind(cmd);
-
-    for (const auto &[pos, mesh] : m_meshes) {
-        f32 x = static_cast<f32>(pos.x * Chunk::CHUNK_SIZE);
-        f32 z = static_cast<f32>(pos.z * Chunk::CHUNK_SIZE);
-
-        ShadowPushConstants pc = {
-            .model = glm::translate(glm::mat4(1.0f), {x, 0.0f, z}),
-            .shadowMatrix = lightSpaceMatrix,
-            .textureID = m_textureID
-        };
-
-        m_shadowPipeline.push(cmd, pc);
-
-        mesh->drawOpaque(cmd);
-        mesh->drawTransparent(cmd);
-        mesh->drawCross(cmd);
-    }
-
-    vkCmdEndRendering(cmd);
-
-    m_shadowImage.cmdTransitionLayout(
-        cmd,
-        VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
-        VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL,
-        VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
-        VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT
-    );
 }
 
 BlockType World::getBlock(int x, int y, int z) const
@@ -475,16 +189,7 @@ void World::placeBlock(const glm::ivec3 &pos, BlockType type)
 
         it->second->update();
 
-        updateMeshe(chunkPos);
-
-        if (localPos.x == 0)
-            updateMeshe({chunkPos.x - 1, chunkPos.z});
-        if (localPos.x == Chunk::CHUNK_SIZE - 1)
-            updateMeshe({chunkPos.x + 1, chunkPos.z});
-        if (localPos.z == 0)
-            updateMeshe({chunkPos.x, chunkPos.z - 1});
-        if (localPos.z == Chunk::CHUNK_SIZE - 1)
-            updateMeshe({chunkPos.x, chunkPos.z + 1});
+        uploadChunkVoxelsToGpu(*it->second);
     }
 }
 
@@ -640,15 +345,108 @@ void World::loadChunks(const ChunkPos &pos)
     chunk->update();
 
     m_chunks[pos] = std::move(chunk);
+
+    if (auto *c = getChunk(pos)) {
+        uploadChunkVoxelsToGpu(*c);
+    }
+}
+
+void World::startChunkThreads()
+{
+    const unsigned int hc = std::thread::hardware_concurrency();
+    const std::size_t threads =
+        static_cast<std::size_t>((hc > 1) ? (hc - 1) : 1);
+    m_chunkThreadPool.start(threads);
+}
+
+void World::stopChunkThreads()
+{
+    m_chunkThreadPool.stop();
+    {
+        std::lock_guard<std::mutex> lock(m_completedChunksMutex);
+        std::queue<std::unique_ptr<Chunk>> empty;
+        std::swap(m_completedChunks, empty);
+    }
+    m_inFlightChunks.clear();
+}
+
+void World::enqueueChunkGen(const ChunkPos &pos)
+{
+    if (isChunkLoaded(pos)) {
+        return;
+    }
+    if (m_inFlightChunks.find(pos) != m_inFlightChunks.end()) {
+        return;
+    }
+
+    m_inFlightChunks.insert(pos);
+
+    // NOTE: Chunk generation is CPU-only; GPU upload is deferred to main thread.
+    m_chunkThreadPool.enqueue([this, pos] {
+        auto chunk = std::make_unique<Chunk>(*this, pos);
+        m_generator.generateChunk(*chunk, pos);
+        chunk->update();
+
+        std::lock_guard<std::mutex> lock(m_completedChunksMutex);
+        m_completedChunks.push(std::move(chunk));
+    });
+}
+
+void World::pollCompletedChunkGen()
+{
+    static int s_pollLogCount = 0;
+    bool gpuWrites = false;
+    // Drain completed chunks quickly on main thread.
+    for (;;) {
+        std::unique_ptr<Chunk> chunk;
+        {
+            std::lock_guard<std::mutex> lock(m_completedChunksMutex);
+            if (m_completedChunks.empty()) {
+                break;
+            }
+            chunk = std::move(m_completedChunks.front());
+            m_completedChunks.pop();
+        }
+        if (!chunk) {
+            continue;
+        }
+
+        const ChunkPos pos = chunk->pos();
+        m_inFlightChunks.erase(pos);
+
+        // If player moved and this chunk is no longer needed, drop it.
+        // (If m_chunksNeeded isn't computed yet for this frame, accept and let the normal unload path handle it.)
+        if (!m_chunksNeeded.empty() && m_chunksNeeded.find(pos) == m_chunksNeeded.end()) {
+            continue;
+        }
+
+        // Insert chunk and upload to GPU voxel atlas.
+        m_chunks[pos] = std::move(chunk);
+
+        if (auto *c = getChunk(pos)) {
+            if (!gpuWrites) {
+                m_device->waitIdle();
+                gpuWrites = true;
+            }
+            uploadChunkVoxelsToGpu(*c);
+        }
+
+        if (s_pollLogCount < 8) {
+            core::debugLog(
+                "C",
+                "world.cpp:pollCompletedChunkGen",
+                "chunk_integrated",
+                "{\"cx\":" + std::to_string(pos.x) + ",\"cz\":" + std::to_string(pos.z)
+                    + ",\"loaded\":" + std::to_string(m_chunks.size()) + "}"
+            );
+            ++s_pollLogCount;
+        }
+    }
 }
 
 void World::unloadChunks(const ChunkPos &pos)
 {
-    if (auto it = m_meshes.find(pos); it != m_meshes.end()) {
-        it->second->destroy();
-        m_meshes.erase(it);
-    }
-
+    freeGpuChunkSlot(pos);
     m_chunks.erase(pos);
 }
 
@@ -657,29 +455,224 @@ bool World::isChunkLoaded(const ChunkPos &pos)
     return m_chunks.find(pos) != m_chunks.end();
 }
 
-void World::updateMeshe(const ChunkPos &pos)
+void World::initGpuVoxelData()
 {
-    auto chunk = getChunk(pos);
+    destroyGpuVoxelData();
 
-    if (!chunk) { return; }
+    const u32 gridSize = static_cast<u32>(2 * m_renderDistance + 1);
+    m_gpuChunkGridSize = gridSize;
 
-    std::array<const Chunk *, 4> neighbors = {
-        getChunk({pos.x - 1, pos.z}),
-        getChunk({pos.x + 1, pos.z}),
-        getChunk({pos.x, pos.z - 1}),
-        getChunk({pos.x, pos.z + 1})
-    };
-
-    UNUSED(neighbors);
-
-    if (auto it = m_meshes.find(pos); it != m_meshes.end()) {
-        it->second->update(*chunk, neighbors);
-    } else {
-        auto mesh = std::make_unique<ChunkMesh>();
-        mesh->init(*m_device);
-        mesh->generate(*chunk, neighbors);
-        m_meshes[pos] = std::move(mesh);
+    // Allocate enough slots for the full grid. (We can optimize later to circle-only.)
+    m_gpuMaxChunkSlots = gridSize * gridSize;
+    if (m_gpuMaxChunkSlots == 0) {
+        return;
     }
+
+    const VkDeviceSize gridBytes =
+        sizeof(GpuChunkGridHeader) + sizeof(u32) * static_cast<VkDeviceSize>(m_gpuMaxChunkSlots);
+    m_gpuChunkGrid = m_device->createBuffer(
+        gridBytes,
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+        VMA_MEMORY_USAGE_CPU_TO_GPU
+    );
+
+    const VkDeviceSize atlasBytes =
+        sizeof(u32) * static_cast<VkDeviceSize>(Chunk::VOXELS_PER_CHUNK) *
+        static_cast<VkDeviceSize>(m_gpuMaxChunkSlots);
+    m_gpuVoxelAtlas = m_device->createBuffer(
+        atlasBytes,
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+        VMA_MEMORY_USAGE_CPU_TO_GPU
+    );
+
+    m_gpuChunkGridSsboId = m_device->addSSBO(m_gpuChunkGrid);
+    m_gpuVoxelAtlasSsboId = m_device->addSSBO(m_gpuVoxelAtlas);
+
+    m_gpuFreeChunkSlots.clear();
+    m_gpuFreeChunkSlots.reserve(m_gpuMaxChunkSlots);
+    for (u32 i = 0; i < m_gpuMaxChunkSlots; ++i) {
+        m_gpuFreeChunkSlots.push_back(m_gpuMaxChunkSlots - 1 - i);
+    }
+    m_gpuChunkSlotByPos.clear();
+
+    rebuildGpuChunkGridHeaderAndClear();
+}
+
+void World::destroyGpuVoxelData()
+{
+    if (m_device) {
+        if (m_gpuChunkGridSsboId != U32_MAX) {
+            m_device->removeResource(m_gpuChunkGridSsboId);
+            m_gpuChunkGridSsboId = U32_MAX;
+        }
+        if (m_gpuVoxelAtlasSsboId != U32_MAX) {
+            m_device->removeResource(m_gpuVoxelAtlasSsboId);
+            m_gpuVoxelAtlasSsboId = U32_MAX;
+        }
+    }
+
+    m_gpuChunkGrid.destroy();
+    m_gpuVoxelAtlas.destroy();
+
+    m_gpuChunkGridSize = 0;
+    m_gpuMaxChunkSlots = 0;
+    m_gpuFreeChunkSlots.clear();
+    m_gpuChunkSlotByPos.clear();
+}
+
+void World::rebuildGpuChunkGridHeaderAndClear()
+{
+    if (!m_gpuChunkGrid.isValid() || m_gpuMaxChunkSlots == 0) {
+        return;
+    }
+
+    // SSBO is sampled by the voxel raycast shader; do not map while GPU may still be reading it.
+    m_device->waitIdle();
+
+    const i32 originX = m_playerChunkPos.x - m_renderDistance;
+    const i32 originZ = m_playerChunkPos.z - m_renderDistance;
+
+    auto *mapped = static_cast<u8 *>(m_gpuChunkGrid.map());
+    if (!mapped) {
+        return;
+    }
+
+    GpuChunkGridHeader header{};
+    header.originChunkX = originX;
+    header.originChunkZ = originZ;
+    header.gridSize = m_gpuChunkGridSize;
+    std::memcpy(mapped, &header, sizeof(header));
+
+    auto *slots = reinterpret_cast<u32 *>(mapped + sizeof(GpuChunkGridHeader));
+    for (u32 i = 0; i < m_gpuMaxChunkSlots; ++i) {
+        slots[i] = kInvalidChunkSlot;
+    }
+
+    const VkDeviceSize gridBytes =
+        sizeof(GpuChunkGridHeader) + sizeof(u32) * static_cast<VkDeviceSize>(m_gpuMaxChunkSlots);
+    m_gpuChunkGrid.flushMappedRange(0, gridBytes);
+    m_gpuChunkGrid.unmap();
+}
+
+u32 World::allocateGpuChunkSlot(const ChunkPos &pos)
+{
+    if (auto it = m_gpuChunkSlotByPos.find(pos); it != m_gpuChunkSlotByPos.end()) {
+        return it->second;
+    }
+    if (m_gpuFreeChunkSlots.empty()) {
+        return kInvalidChunkSlot;
+    }
+
+    u32 slot = m_gpuFreeChunkSlots.back();
+    m_gpuFreeChunkSlots.pop_back();
+    m_gpuChunkSlotByPos[pos] = slot;
+    return slot;
+}
+
+void World::freeGpuChunkSlot(const ChunkPos &pos)
+{
+    auto it = m_gpuChunkSlotByPos.find(pos);
+    if (it == m_gpuChunkSlotByPos.end()) {
+        return;
+    }
+
+    const u32 slot = it->second;
+    m_gpuChunkSlotByPos.erase(it);
+    m_gpuFreeChunkSlots.push_back(slot);
+
+    setGpuChunkGridSlot(pos, kInvalidChunkSlot);
+}
+
+void World::setGpuChunkGridSlot(const ChunkPos &pos, u32 slotIndex)
+{
+    if (!m_gpuChunkGrid.isValid() || m_gpuChunkGridSize == 0) {
+        return;
+    }
+
+    const i32 localX = pos.x - (m_playerChunkPos.x - m_renderDistance);
+    const i32 localZ = pos.z - (m_playerChunkPos.z - m_renderDistance);
+    if (localX < 0 || localZ < 0) {
+        return;
+    }
+
+    const u32 ux = static_cast<u32>(localX);
+    const u32 uz = static_cast<u32>(localZ);
+    if (ux >= m_gpuChunkGridSize || uz >= m_gpuChunkGridSize) {
+        return;
+    }
+
+    const u32 idx = uz * m_gpuChunkGridSize + ux;
+
+    auto *mapped = static_cast<u8 *>(m_gpuChunkGrid.map());
+    if (!mapped) {
+        return;
+    }
+
+    auto *slots = reinterpret_cast<u32 *>(mapped + sizeof(GpuChunkGridHeader));
+    slots[idx] = slotIndex;
+    const VkDeviceSize slotByteOff =
+        sizeof(GpuChunkGridHeader) + static_cast<VkDeviceSize>(idx) * sizeof(u32);
+    m_gpuChunkGrid.flushMappedRange(slotByteOff, sizeof(u32));
+    m_gpuChunkGrid.unmap();
+}
+
+void World::uploadChunkVoxelsToGpu(const Chunk &chunk)
+{
+    if (!m_gpuVoxelAtlas.isValid() || !m_device) {
+        return;
+    }
+
+    const ChunkPos pos = chunk.pos();
+    const u32 slotIndex = allocateGpuChunkSlot(pos);
+    if (slotIndex == kInvalidChunkSlot) {
+        return;
+    }
+
+    setGpuChunkGridSlot(pos, slotIndex);
+
+    static int s_uploadLogCount = 0;
+    if (s_uploadLogCount < 8) {
+        const i32 localX = pos.x - (m_playerChunkPos.x - m_renderDistance);
+        const i32 localZ = pos.z - (m_playerChunkPos.z - m_renderDistance);
+        u32 maxBlock = 0;
+        const auto *blocks = chunk.blockData();
+        for (int i = 0; i < Chunk::VOXELS_PER_CHUNK; ++i) {
+            maxBlock = std::max(maxBlock, static_cast<u32>(blocks[i]) & 0xffu);
+        }
+        core::debugLog(
+            "F",
+            "world.cpp:uploadChunkVoxelsToGpu",
+            "upload_meta",
+            "{\"slot\":" + std::to_string(slotIndex) + ",\"lx\":" + std::to_string(localX)
+                + ",\"lz\":" + std::to_string(localZ) + ",\"maxBlock\":" + std::to_string(maxBlock)
+                + ",\"gridSize\":" + std::to_string(m_gpuChunkGridSize) + "}"
+        );
+        ++s_uploadLogCount;
+    }
+
+    const VkDeviceSize voxelOffsetU32 =
+        static_cast<VkDeviceSize>(slotIndex) * static_cast<VkDeviceSize>(Chunk::VOXELS_PER_CHUNK);
+    const VkDeviceSize byteOffset = voxelOffsetU32 * sizeof(u32);
+
+    auto *mapped = static_cast<u8 *>(m_gpuVoxelAtlas.map());
+    if (!mapped) {
+        return;
+    }
+
+    auto *dst = reinterpret_cast<u32 *>(mapped + byteOffset);
+    const auto *blocks = chunk.blockData();
+    const auto *lights = chunk.lightData();
+
+    for (int i = 0; i < Chunk::VOXELS_PER_CHUNK; ++i) {
+        const u32 b = static_cast<u32>(blocks[i]) & 0xffu;
+        const u32 l = static_cast<u32>(lights[i]) & 0xffu;
+        dst[i] = b | (l << 8);
+    }
+
+    const VkDeviceSize chunkBytes =
+        static_cast<VkDeviceSize>(Chunk::VOXELS_PER_CHUNK) * sizeof(u32);
+    m_gpuVoxelAtlas.flushMappedRange(byteOffset, chunkBytes);
+    m_gpuVoxelAtlas.unmap();
 }
 
 } // namespace wld

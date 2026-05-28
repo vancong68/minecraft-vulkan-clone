@@ -32,6 +32,8 @@ public:
         return m_blocks[id];
     }
 
+    u32 blockCount() const { return static_cast<u32>(m_blocks.size()); }
+
 private:
     BlockRegistry();
     ~BlockRegistry() = default;

@@ -93,4 +93,17 @@ void Buffer::unmap()
     m_isMapped = false;
 }
 
+void Buffer::flushMappedRange(VkDeviceSize offset, VkDeviceSize size)
+{
+    if (!m_allocation || m_buffer == VK_NULL_HANDLE) {
+        return;
+    }
+
+    if (size == 0) {
+        size = m_size;
+    }
+
+    vmaFlushAllocation(m_device->getAllocator(), m_allocation, offset, size);
+}
+
 } // namespace gfx

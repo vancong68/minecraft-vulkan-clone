@@ -13,6 +13,11 @@ layout(binding = 0, std140) uniform CameraBuffer {
     vec4 camPosWs;
 } camUbo[];
 
+// Bindless SSBO array. Each element is a standalone storage buffer resource.
+layout(binding = 1, std430) readonly buffer SsboBuffer {
+    uint data[];
+} ssboArr[];
+
 layout(binding = 2) uniform sampler2D texArr[];
 
 #endif // GLOBAL_GLSL

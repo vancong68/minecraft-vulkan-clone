@@ -24,10 +24,12 @@ void Display::init(Device &device)
         .setPushConstant(sizeof(PushConstant))
         .build();
 
-    m_pc.textureID = 0;
-    m_pc.depthTextureID = 0;
+    m_pc.textureID = m_framebuffer.getTextureID();
+    m_pc.depthTextureID = m_framebuffer.getDepthTextureID();
+    m_pc.aoTextureID = U32_MAX;
+    m_pc.godRaysTextureID = U32_MAX;
     m_pc.shadowTextureID = 0;
-    m_pc.padding = 0;
+    m_pc.padding0 = 0;
     m_pc.color = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);
     m_pc.sun = glm::vec4(0.5f, 0.25f, 0.0f, 0.0f);
     m_pc.effects = 3;

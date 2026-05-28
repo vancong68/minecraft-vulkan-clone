@@ -53,6 +53,8 @@ public:
 
     void removeResource(u32 id);
 
+    void updateTexture(u32 id, const Image &image, VkSampler sampler = VK_NULL_HANDLE);
+
     void update();
 
 public:

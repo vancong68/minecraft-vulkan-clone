@@ -29,6 +29,8 @@ public:
     void setColor(const glm::vec4 &color) { m_pc.color = color; }
     void setSun(const glm::vec2 &sunPos, float intensity) { m_pc.sun = glm::vec4(sunPos, intensity, 0.0f); }
     void setShadowMap(u32 shadowTextureID) { m_pc.shadowTextureID = shadowTextureID; }
+    void setAoTexture(u32 aoTextureID) { m_pc.aoTextureID = aoTextureID; }
+    void setGodRaysTexture(u32 raysTextureID) { m_pc.godRaysTextureID = raysTextureID; }
     void setEffects(bool ssao, bool godRays)
     {
         m_pc.effects = (ssao ? 1u : 0u) | (godRays ? 2u : 0u);
@@ -36,6 +38,8 @@ public:
 
     u32 framebufferWidth() const { return m_framebuffer.getWidth(); }
     u32 framebufferHeight() const { return m_framebuffer.getHeight(); }
+    u32 sceneTextureID() const { return m_framebuffer.getTextureID(); }
+    u32 sceneDepthTextureID() const { return m_framebuffer.getDepthTextureID(); }
 
 private:
     Device *m_device = nullptr;
@@ -48,8 +52,10 @@ private:
     {
         alignas(4) u32 textureID;
         alignas(4) u32 depthTextureID;
+        alignas(4) u32 aoTextureID;
+        alignas(4) u32 godRaysTextureID;
         alignas(4) u32 shadowTextureID;
-        alignas(4) u32 padding;
+        alignas(4) u32 padding0;
         alignas(16) glm::vec4 color;
         alignas(16) glm::vec4 sun;
         alignas(4) u32 effects;

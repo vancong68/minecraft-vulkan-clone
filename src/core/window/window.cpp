@@ -90,6 +90,9 @@ void Window::keyCallback(
     UNUSED(mods);
 
     Window *win = static_cast<Window *>(glfwGetWindowUserPointer(window));
+    if (!win || key < 0 || key > GLFW_KEY_LAST) {
+        return;
+    }
 
     if (action == GLFW_PRESS) {
         win->m_keys[key] = true;
@@ -108,6 +111,9 @@ void Window::mouseButtonCallback(
     UNUSED(mods);
 
     Window *win = static_cast<Window *>(glfwGetWindowUserPointer(window));
+    if (!win || button < 0 || button > GLFW_MOUSE_BUTTON_LAST) {
+        return;
+    }
 
     if (action == GLFW_PRESS) {
         win->m_mouseButtons[button] = true;

@@ -247,6 +247,30 @@ void BindlessManager::removeResource(u32 id)
     m_resources[id] = ResourceSlot{};
 }
 
+void BindlessManager::updateTexture(u32 id, const Image &image, VkSampler sampler)
+{
+    VkImageView imageView = image.getImageView();
+    if (imageView == VK_NULL_HANDLE) {
+        throw std::runtime_error("Image view is not created.");
+    }
+
+    if (sampler == VK_NULL_HANDLE) {
+        sampler = m_device->getDefaultSampler();
+    }
+
+    std::lock_guard<std::mutex> lock(m_mutex);
+
+    if (id >= m_resources.size() || !m_resources[id].isUsed
+        || m_resources[id].type != ResourceType::TEXTURE) {
+        return;
+    }
+
+    m_resources[id].imageView = imageView;
+    m_resources[id].sampler = sampler;
+    m_resources[id].isDirty = true;
+    m_dirtyResources.push_back(id);
+}
+
 void BindlessManager::update()
 {
     std::lock_guard<std::mutex> lock(m_mutex);
@@ -259,18 +283,16 @@ void BindlessManager::update()
     std::vector<VkDescriptorBufferInfo> bufferInfos;
     std::vector<VkDescriptorImageInfo> imageInfos;
 
+    writeSets.reserve(m_dirtyResources.size());
+    bufferInfos.reserve(m_dirtyResources.size());
+    imageInfos.reserve(m_dirtyResources.size());
+
     for (u32 index : m_dirtyResources) {
         auto &resource = m_resources[index];
 
         if (!resource.isUsed || !resource.isDirty) {
             continue;
         }
-
-        bufferInfos.push_back({
-            resource.buffer,
-            resource.offset,
-            resource.range
-        });
 
         VkWriteDescriptorSet write{};
         write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -289,7 +311,7 @@ void BindlessManager::update()
                 });
                 write.pBufferInfo = &bufferInfos.back();
                 break;
-            
+
             case ResourceType::SSBO:
                 write.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
                 bufferInfos.push_back({
@@ -299,7 +321,7 @@ void BindlessManager::update()
                 });
                 write.pBufferInfo = &bufferInfos.back();
                 break;
-            
+
             case ResourceType::TEXTURE:
                 write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
                 imageInfos.push_back({

@@ -1,6 +1,8 @@
 #include "game.hpp"
 
+#include "core/debug_log.hpp"
 #include <algorithm>
+#include <string>
 #include <cmath>
 #include <utility>
 
@@ -45,6 +47,12 @@ std::pair<u32, u32> cappedRenderExtent(u32 windowW, u32 windowH)
 
 void Game::syncSwapchainAndDisplay()
 {
+    static int s_syncLog = 0;
+    if (s_syncLog < 2) {
+        core::debugLog("E", "game.cpp:syncSwapchainAndDisplay", "enter");
+        ++s_syncLog;
+    }
+
     int fw = 0;
     int fh = 0;
     glfwGetFramebufferSize(m_window.get(), &fw, &fh);
@@ -60,6 +68,9 @@ void Game::syncSwapchainAndDisplay()
         uw != swapExt.width || uh != swapExt.height || m_window.isResized();
 
     if (swapMismatch) {
+        if (s_syncLog <= 2) {
+            core::debugLog("E", "game.cpp:syncSwapchainAndDisplay", "recreate_swapchain");
+        }
         m_device.waitIdle();
         m_device.recreateSwapchain();
         m_window.clearResizeFlag();
@@ -71,8 +82,22 @@ void Game::syncSwapchainAndDisplay()
     }
 
     if (rw != m_display.framebufferWidth() || rh != m_display.framebufferHeight()) {
+        if (s_syncLog <= 2) {
+            core::debugLog(
+                "E",
+                "game.cpp:syncSwapchainAndDisplay",
+                "resize_display",
+                "{\"rw\":" + std::to_string(rw) + ",\"rh\":" + std::to_string(rh) + "}"
+            );
+        }
         m_device.waitIdle();
         m_display.resize(rw, rh);
+        m_ssaoPass.resize(rw, rh);
+        m_godRaysPass.resize(rw, rh);
+        m_device.update();
+        if (s_syncLog <= 2) {
+            core::debugLog("E", "game.cpp:syncSwapchainAndDisplay", "resize_done");
+        }
     }
 }
 
@@ -157,10 +182,44 @@ void Game::init()
     m_textureCache.loadTexture("gui/icons.png", "icons");
 
     m_display.init(m_device);
+    core::debugLog("A", "game.cpp:init", "display_init_done");
+    m_voxelRenderer.init(m_device);
+    core::debugLog("A", "game.cpp:init", "voxel_renderer_init_done");
+
+    int initFbW = 0;
+    int initFbH = 0;
+    glfwGetFramebufferSize(m_window.get(), &initFbW, &initFbH);
+    const auto [initRw, initRh] = cappedRenderExtent(
+        static_cast<u32>(initFbW),
+        static_cast<u32>(initFbH)
+    );
+    if (initRw > 0 && initRh > 0
+        && (initRw != m_display.framebufferWidth() || initRh != m_display.framebufferHeight())) {
+        m_device.waitIdle();
+        m_display.resize(initRw, initRh);
+        m_device.update();
+    }
+
+    m_ssaoPass.init(m_device, m_display.framebufferWidth(), m_display.framebufferHeight());
+    m_godRaysPass.init(m_device, m_display.framebufferWidth(), m_display.framebufferHeight());
+    core::debugLog(
+        "A",
+        "game.cpp:init",
+        "postprocess_init_done",
+        "{\"fbW\":" + std::to_string(m_display.framebufferWidth()) + ",\"fbH\":"
+            + std::to_string(m_display.framebufferHeight()) + "}"
+    );
 
     sfx::SoundManager::get().init();
 
     m_world.init(m_device, m_textureCache);
+    core::debugLog(
+        "C",
+        "game.cpp:init",
+        "world_init_done",
+        "{\"gridSsbo\":" + std::to_string(m_world.getGpuChunkGridSsboId()) + ",\"atlasSsbo\":"
+            + std::to_string(m_world.getGpuVoxelAtlasSsboId()) + "}"
+    );
     m_world.setTerrainPreset(m_settings.terrainPreset);
     m_world.setRenderDistance(m_settings.renderDistanceChunks);
     m_camera.setFov(m_settings.fov);
@@ -283,7 +342,10 @@ void Game::destroy()
 
     sfx::SoundManager::get().destroy();
 
+    m_godRaysPass.destroy();
+    m_ssaoPass.destroy();
     m_display.destroy();
+    m_voxelRenderer.destroy();
     m_textureCache.destroy();
     m_gpuData.destroy();
     m_device.destroy();
@@ -293,6 +355,7 @@ void Game::destroy()
 
 void Game::run()
 {
+    core::debugLog("B", "game.cpp:run", "run_enter");
     f64 lastTime = m_window.getCurrentTime();
     f64 accumulator = 0.0;
     
@@ -302,9 +365,23 @@ void Game::run()
 
     m_ecs.storePositions();
     
+    int s_loopLog = 0;
     while (m_running) {
+        if (s_loopLog < 3) {
+            core::debugLog(
+                "B",
+                "game.cpp:run",
+                "loop_iter",
+                "{\"n\":" + std::to_string(s_loopLog) + "}"
+            );
+            ++s_loopLog;
+        }
         if (!m_window.isOpen()) {
             m_running = false;
+        }
+
+        if (s_loopLog <= 1) {
+            core::debugLog("B", "game.cpp:run", "before_getTime");
         }
 
         f64 currentTime = m_window.getCurrentTime();
@@ -329,13 +406,25 @@ void Game::run()
             accumulator += frameTime;
         }
 
+        if (s_loopLog <= 1) {
+            core::debugLog("B", "game.cpp:run", "before_window_update");
+        }
         m_window.update();
+        if (s_loopLog <= 1) {
+            core::debugLog("B", "game.cpp:run", "after_window_update");
+        }
         if (m_window.isMinimized()) {
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
             continue;
         }
 
+        if (s_loopLog <= 1) {
+            core::debugLog("B", "game.cpp:run", "before_handleInput");
+        }
         handleInput();
+        if (s_loopLog <= 1) {
+            core::debugLog("B", "game.cpp:run", "after_handleInput");
+        }
 
         while (accumulator >= MS_PER_TICK) {
             m_ecs.storePositions();
@@ -345,10 +434,20 @@ void Game::run()
 
         f32 alpha = static_cast<f32>(accumulator / MS_PER_TICK);
 
+        if (s_loopLog <= 1) {
+            core::debugLog("B", "game.cpp:run", "before_update");
+        }
         update(alpha);
-        
+        if (s_loopLog <= 1) {
+            core::debugLog("B", "game.cpp:run", "after_update");
+        }
+
+        if (s_loopLog <= 3) {
+            core::debugLog("B", "game.cpp:run", "before_render");
+        }
         render();
     }
+    core::debugLog("B", "game.cpp:run", "run_exit");
 }
 
 void Game::handleInput()
@@ -412,7 +511,17 @@ void Game::handleInput()
 
 void Game::update(f32 dt)
 {
+    static int s_updLog = 0;
+    if (s_updLog < 2) {
+        core::debugLog("E", "game.cpp:update", "enter");
+    }
+
     syncSwapchainAndDisplay();
+
+    if (s_updLog < 2) {
+        core::debugLog("E", "game.cpp:update", "after_sync");
+        ++s_updLog;
+    }
 
     /// Match the 3D pass aspect to the display framebuffer (often downscaled vs swapchain).
     const f32 fbW = static_cast<f32>(m_display.framebufferWidth());
@@ -439,7 +548,15 @@ void Game::update(f32 dt)
     m_gpuData.updateLight(lightMat, sunDir);
     m_gpuData.updateTime(m_window.getCurrentTime(), dt);
 
+    if (s_updLog <= 2) {
+        core::debugLog("E", "game.cpp:update", "before_gui");
+    }
+
     updateGui();
+
+    if (s_updLog <= 2) {
+        core::debugLog("E", "game.cpp:update", "after_gui");
+    }
 
     if (m_state != GameState::RUNNING) {
         m_camera.updateView();
@@ -465,13 +582,29 @@ void Game::update(f32 dt)
 
     m_display.setEffects(m_settings.ssao, m_settings.godRays);
 
+    if (s_updLog <= 2) {
+        core::debugLog("E", "game.cpp:update", "before_interpolate");
+    }
+
     m_ecs.interpolate(dt);
 
+    if (s_updLog <= 2) {
+        core::debugLog("E", "game.cpp:update", "before_player_camera");
+    }
+
     m_playerSystem.updateCamera();
+
+    if (s_updLog <= 2) {
+        core::debugLog("E", "game.cpp:update", "before_gpu_data");
+    }
 
     m_camera.updateView();
     m_gpuData.updateCamera(m_camera);
     m_gpuData.update();
+
+    if (s_updLog <= 2) {
+        core::debugLog("E", "game.cpp:update", "update_exit");
+    }
 
     sfx::SoundManager::get().setListenerPos(
         m_camera.getPos(),
@@ -487,6 +620,12 @@ void Game::tick(f32 dt)
         return;
     }
 
+    static int s_tickLog = 0;
+    if (s_tickLog < 3) {
+        core::debugLog("C", "game.cpp:tick", "tick_enter", "{\"n\":" + std::to_string(s_tickLog) + "}");
+        ++s_tickLog;
+    }
+
     const f32 dayTick = dt * (1.0f / 600.0f) * m_settings.timeScale;
     m_dayPhase += dayTick;
     while (m_dayPhase >= 1.0f) {
@@ -494,6 +633,11 @@ void Game::tick(f32 dt)
     }
 
     m_world.update(m_camera.getPos(), dt);
+
+    if (s_tickLog <= 3) {
+        core::debugLog("C", "game.cpp:tick", "after_world_update");
+    }
+
     m_clouds.update(dt);
 
     m_playerSystem.tick(dt);
@@ -502,8 +646,15 @@ void Game::tick(f32 dt)
 
 void Game::render()
 {
+    static int s_renderLogCount = 0;
+    // Ensure CPU voxel SSBO writes from chunk gen cannot overlap GPU raycast reads.
+    m_device.waitIdle();
     auto cmd = m_device.beginFrame();
     if (!cmd) {
+        if (s_renderLogCount < 3) {
+            core::debugLog("D", "game.cpp:render", "beginFrame_null");
+            ++s_renderLogCount;
+        }
         return;
     }
 
@@ -516,8 +667,8 @@ void Game::render()
     ));
     glm::mat4 lightMat = wld::World::computeLightMatrix(sunDir);
 
-    if (m_settings.shadows) {
-        m_world.renderShadow(sunDir, cmd);
+    if (s_renderLogCount < 5) {
+        core::debugLog("B", "game.cpp:render", "after_beginFrame");
     }
 
     m_display.begin(cmd);
@@ -525,22 +676,37 @@ void Game::render()
     const f32 weatherBlend = m_settings.weather ? 1.0f : 0.0f;
     m_sky.render(cmd, m_dayPhase, weatherBlend, sunDir);
 
-    glm::vec4 sunPacked(sunDir, 0.0f);
-    const u32 shadowTex = m_world.getShadowTextureID();
-    m_world.render(
-        m_camera,
+    if (s_renderLogCount < 5) {
+        core::debugLog("B", "game.cpp:render", "after_sky");
+    }
+
+    m_voxelRenderer.draw(
         cmd,
-        lightMat,
-        sunPacked,
-        shadowTex,
-        m_settings.shadows
+        m_world.getGpuChunkGridSsboId(),
+        m_world.getGpuVoxelAtlasSsboId(),
+        m_textureCache.getTextureID("terrain"),
+        sunDir
     );
+
+    if (s_renderLogCount < 5) {
+        core::debugLog("B", "game.cpp:render", "after_voxel");
+    }
 
     m_outline.render(cmd, m_camera);
     m_clouds.render(cmd, m_camera);
     m_overlay.render(cmd);
 
     m_display.end(cmd);
+
+    if (s_renderLogCount < 5) {
+        core::debugLog("B", "game.cpp:render", "after_scene_pass");
+    }
+
+    // SSAO pass generates AO texture from the scene depth.
+    if (m_settings.ssao) {
+        m_ssaoPass.render(cmd, m_display.sceneDepthTextureID());
+        m_display.setAoTexture(m_ssaoPass.getAoTextureId());
+    }
 
     glm::vec4 sunWorld = glm::vec4(m_camera.getPos() - sunDir * 1000.0f, 1.0f);
     glm::vec4 sunClip = m_camera.getProj() * m_camera.getView() * sunWorld;
@@ -556,6 +722,15 @@ void Game::render()
         m_settings.godRays ? glm::clamp(clipStrength * elevStrength, 0.0f, 1.0f) : 0.0f;
     m_display.setSun(sunScreen, sunStrength);
 
+    if (m_settings.godRays) {
+        m_godRaysPass.render(cmd, m_display.sceneDepthTextureID(), sunScreen, sunStrength);
+        m_display.setGodRaysTexture(m_godRaysPass.getRaysTextureId());
+    }
+
+    if (s_renderLogCount < 5) {
+        core::debugLog("B", "game.cpp:render", "after_postprocess");
+    }
+
     m_device.beginRenderClear(cmd);
     m_display.draw(cmd);
     m_device.endRender(cmd);
@@ -565,6 +740,17 @@ void Game::render()
     m_device.endRender(cmd);
 
     m_device.endFrame(cmd);
+
+    if (s_renderLogCount < 5) {
+        core::debugLog(
+            "B",
+            "game.cpp:render",
+            "frame_done",
+            "{\"frame\":" + std::to_string(s_renderLogCount) + ",\"chunks\":"
+                + std::to_string(m_world.getUpdatedChunks()) + "}"
+        );
+        ++s_renderLogCount;
+    }
 }
 
 void Game::updateGui()

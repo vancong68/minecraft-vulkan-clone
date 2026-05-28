@@ -10,17 +10,15 @@
 #include <thread>
 #include <mutex>
 #include <queue>
-#include <future>
 
 #include "chunk.hpp"
-#include "chunk_mesh.hpp"
 #include "block.hpp"
 #include "block_registry.hpp"
 #include "world_generator.hpp"
+#include "core/thread_pool.hpp"
 #include "core/camera/camera.hpp"
-#include "graphics/device.hpp"
-#include "graphics/pipeline.hpp"
 #include "graphics/texture_cache.hpp"
+#include "graphics/buffer.hpp"
 #include "core/frustum.hpp"
 
 namespace wld
@@ -47,19 +45,8 @@ public:
     void destroy();
 
     void update(const glm::vec3 &playerPos, f32 dt);
-    void render(
-        const core::Camera &camera,
-        VkCommandBuffer cmd,
-        const glm::mat4 &lightMatrix,
-        const glm::vec4 &sunDirPacked,
-        u32 shadowMapTextureID,
-        bool shadowsEnabled
-    );
-    void renderShadow(const glm::vec3 &sunDir, VkCommandBuffer cmd);
 
     static glm::mat4 computeLightMatrix(const glm::vec3 &sunDir);
-
-    u32 getShadowTextureID() const { return m_shadowTextureID; }
 
     void setTerrainPreset(int preset);
     void setRenderDistance(int chunkRadius);
@@ -77,6 +64,9 @@ public:
     bool checkCollision(const glm::vec3 &min, const glm::vec3 &max);
 
     usize getUpdatedChunks() const { return m_updatedChunks; }
+
+    u32 getGpuChunkGridSsboId() const { return m_gpuChunkGridSsboId; }
+    u32 getGpuVoxelAtlasSsboId() const { return m_gpuVoxelAtlasSsboId; }
 
 public:
     Chunk *getChunk(const ChunkPos &pos) const;
@@ -105,62 +95,68 @@ private:
     int m_renderDistance = 8;
 
     std::queue<ChunkPos> m_pendingChunks;
-    std::queue<ChunkPos> m_pendingMeshes;
 
     usize m_updatedChunks = 0;
 
     gfx::Device *m_device;
-
-    enum PipelineType
-    {
-        P_OPAQUE,
-        P_TRANSPARENT,
-        P_CROSS,
-    };
-
-    std::array<gfx::Pipeline, 3> m_pipelines;
-    gfx::Pipeline m_shadowPipeline;
-
-    u32 m_textureID;
-    u32 m_shadowTextureID = U32_MAX;
-
-    gfx::Image m_shadowImage;
-
-    struct ShadowPushConstants
-    {
-        alignas(16) glm::mat4 model;
-        alignas(16) glm::mat4 shadowMatrix;
-        alignas(4) u32 textureID;
-    };
-
-    struct ChunkPushConstants
-    {
-        alignas(16) glm::mat4 model;
-        alignas(16) glm::mat4 shadowMatrix;
-        alignas(16) glm::vec4 sunDir;
-        /// World-space camera position for fog/distance (avoids flaky UBO reads on some GPUs).
-        alignas(16) glm::vec4 camWorldPos;
-        alignas(4) u32 textureID;
-        alignas(4) u32 shadowMapTextureID;
-    };
-
-    static_assert(sizeof(ChunkPushConstants) == 176);
-    static_assert(offsetof(ChunkPushConstants, textureID) == 160);
 
     core::Frustum m_frustum;
 
     using ChunkMap = std::unordered_map<ChunkPos,
         std::unique_ptr<Chunk>, 
         ChunkPosHash>;
-    using ChunkMeshMap = std::unordered_map<ChunkPos, 
-        std::unique_ptr<ChunkMesh>, 
-        ChunkPosHash>;
 
     ChunkPos m_playerChunkPos;
     ChunkMap m_chunks;
-    ChunkMeshMap m_meshes;
 
     WorldGenerator m_generator;
+
+private:
+    // --- Chunk generation threading ---
+    core::ThreadPool m_chunkThreadPool;
+    std::mutex m_completedChunksMutex;
+    std::queue<std::unique_ptr<Chunk>> m_completedChunks;
+    std::unordered_set<ChunkPos, ChunkPosHash> m_inFlightChunks;
+
+    void startChunkThreads();
+    void stopChunkThreads();
+    void enqueueChunkGen(const ChunkPos &pos);
+    void pollCompletedChunkGen();
+
+private:
+    // --- GPU voxel data (used by fullscreen voxel raycaster) ---
+    struct GpuChunkGridHeader
+    {
+        alignas(4) i32 originChunkX = 0;
+        alignas(4) i32 originChunkZ = 0;
+        alignas(4) u32 gridSize = 0;      // (2*renderDistance + 1)
+        alignas(4) u32 _pad0 = 0;
+    };
+
+    static constexpr u32 kInvalidChunkSlot = 0xffffffffu;
+
+    // Storage buffer layout:
+    // [GpuChunkGridHeader][u32 chunkSlotIndex[gridSize*gridSize]]
+    gfx::Buffer m_gpuChunkGrid;
+    u32 m_gpuChunkGridSsboId = U32_MAX;
+
+    // Storage buffer layout: u32 voxels[maxChunkSlots * Chunk::VOXELS_PER_CHUNK]
+    // voxel encoding: (blockId & 0xff) | ((light & 0xff) << 8)
+    gfx::Buffer m_gpuVoxelAtlas;
+    u32 m_gpuVoxelAtlasSsboId = U32_MAX;
+
+    u32 m_gpuChunkGridSize = 0;
+    u32 m_gpuMaxChunkSlots = 0;
+    std::vector<u32> m_gpuFreeChunkSlots;
+    std::unordered_map<ChunkPos, u32, ChunkPosHash> m_gpuChunkSlotByPos;
+
+    void initGpuVoxelData();
+    void destroyGpuVoxelData();
+    void rebuildGpuChunkGridHeaderAndClear();
+    void uploadChunkVoxelsToGpu(const Chunk &chunk);
+    void setGpuChunkGridSlot(const ChunkPos &pos, u32 slotIndex);
+    u32 allocateGpuChunkSlot(const ChunkPos &pos);
+    void freeGpuChunkSlot(const ChunkPos &pos);
 };
 
 } // namespace wld
