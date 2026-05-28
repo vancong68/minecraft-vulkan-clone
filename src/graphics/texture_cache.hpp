@@ -26,14 +26,18 @@ public:
         if (it != m_textures.end()) {
             return it->second.second;
         }
-        return ~0u;
+        return m_fallbackTextureID;
     }
 
 private:
     Device *m_device = nullptr;
 
     std::unordered_map<std::string, std::pair<Image, u32>> m_textures;
+    Image m_fallbackImage;
+    u32 m_fallbackTextureID = ~0u;
 
-}; 
+    void createFallbackTexture();
+
+};
 
 } // namespace gfx

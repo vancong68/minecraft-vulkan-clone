@@ -67,6 +67,7 @@ void VoxelRenderer::draw(
     u32 chunkGridSsboId,
     u32 voxelAtlasSsboId,
     u32 terrainTextureId,
+    u32 aoTextureId,
     const glm::vec3 &sunDir
 )
 {
@@ -81,11 +82,11 @@ void VoxelRenderer::draw(
     pc.voxelAtlasSsboId = gfx::BindlessManager::getLocalIndexFromHandle(voxelAtlasSsboId);
     pc.blockUvSsboId = gfx::BindlessManager::getLocalIndexFromHandle(m_blockUvTableSsboId);
     pc.terrainTextureId = gfx::BindlessManager::getLocalIndexFromHandle(terrainTextureId);
+    pc.aoTextureId = (aoTextureId != U32_MAX) ? gfx::BindlessManager::getLocalIndexFromHandle(aoTextureId) : U32_MAX;
     pc.sunDir_ws = glm::vec4(glm::normalize(sunDir), 0.0f);
 
     m_pipeline.push(cmd, pc);
 
-    // Fullscreen triangle.
     vkCmdDraw(cmd, 3, 1, 0, 0);
 }
 

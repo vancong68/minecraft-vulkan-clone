@@ -1,6 +1,7 @@
 #include "texture_cache.hpp"
 
 #include <vulkan/vulkan.h>
+#include <cstring>
 
 namespace gfx
 {
@@ -8,6 +9,43 @@ namespace gfx
 void TextureCache::init(Device &device)
 {
     m_device = &device;
+    createFallbackTexture();
+}
+
+void TextureCache::createFallbackTexture()
+{
+    constexpr u32 checkerSize = 8;
+    constexpr u32 squareSize = 4;
+    
+    std::vector<u32> pixelData(checkerSize * checkerSize);
+    u32 magenta = 0xFF00FFFF;
+    u32 black = 0xFF000000;
+    
+    for (u32 y = 0; y < checkerSize; ++y) {
+        for (u32 x = 0; x < checkerSize; ++x) {
+            bool isEvenX = (x / squareSize) % 2 == 0;
+            bool isEvenY = (y / squareSize) % 2 == 0;
+            pixelData[y * checkerSize + x] = (isEvenX == isEvenY) ? magenta : black;
+        }
+    }
+    
+    m_fallbackImage = m_device->createImageFromData(
+        pixelData.data(),
+        checkerSize,
+        checkerSize,
+        VK_FORMAT_R8G8B8A8_SRGB,
+        VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+        false,
+        VK_IMAGE_ASPECT_COLOR_BIT
+    );
+    
+    if (m_fallbackImage.isValid()) {
+        m_fallbackTextureID = m_device->addTexture(m_fallbackImage);
+    }
+    
+    if (m_fallbackTextureID == ~0u) {
+        throw std::runtime_error("Failed to create fallback texture.");
+    }
 }
 
 void TextureCache::destroy()
@@ -15,6 +53,7 @@ void TextureCache::destroy()
     for (auto &pair : m_textures) {
         pair.second.first.destroy();
     }
+    m_fallbackImage.destroy();
 }
 
 void TextureCache::loadTexture(const fs::path &path, const std::string &name)
@@ -28,23 +67,33 @@ void TextureCache::loadTexture(const fs::path &path, const std::string &name)
     /// stb_image uploads RGBA8 in R,G,B,A order; must not use BGRA swapchain formats.
     const VkFormat format = VK_FORMAT_R8G8B8A8_SRGB;
 
-    Image image = m_device->loadImage(
-        texturePath,
-        format,
-        VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
-        false
-    );
+    try {
+        Image image = m_device->loadImage(
+            texturePath,
+            format,
+            VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+            false
+        );
 
-    if (!image.isValid()) {
-        throw std::runtime_error("Failed to load texture: " + path.string());
-    }
-    
-    u32 textureID = m_device->addTexture(image);
-    if (textureID == ~0u) {
-        throw std::runtime_error("Failed to add texture to bindless manager.");
-    }
+        if (!image.isValid()) {
+            std::cerr << "Warning: Failed to load texture: " << path.string() << " (invalid image)" << std::endl;
+            m_textures[name] = {m_fallbackImage, m_fallbackTextureID};
+            return;
+        }
+        
+        u32 textureID = m_device->addTexture(image);
+        if (textureID == ~0u) {
+            std::cerr << "Warning: Failed to add texture to bindless manager: " << path.string() << std::endl;
+            image.destroy();
+            m_textures[name] = {m_fallbackImage, m_fallbackTextureID};
+            return;
+        }
 
-    m_textures[name] = {image, textureID};
+        m_textures[name] = {image, textureID};
+    } catch (const std::exception &e) {
+        std::cerr << "Warning: Exception loading texture " << path.string() << ": " << e.what() << std::endl;
+        m_textures[name] = {m_fallbackImage, m_fallbackTextureID};
+    }
 }
 
 } // namespace gfx

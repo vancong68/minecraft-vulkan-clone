@@ -11,6 +11,7 @@ layout(push_constant) uniform PushConstantsObject {
     uint voxelAtlasSsboId;
     uint blockUvSsboId;
     uint terrainTextureId;
+    uint aoTextureId;
     vec4 sunDir_ws;
 } pco;
 
@@ -85,21 +86,32 @@ uint sampleBlockId(ivec3 worldVoxel)
 
 vec2 getFaceUV(uint blockId, uint faceId, vec2 faceFrac)
 {
-    // Face UV table: packed (x | (y<<16)) per [blockId*6 + faceId].
     uint uvId = nonuniformEXT(pco.blockUvSsboId);
     uint uvPacked = ssboArr[nonuniformEXT(uvId)].data[blockId * 6u + faceId];
     uint tileX = uvPacked & 0xffffu;
     uint tileY = (uvPacked >> 16u) & 0xffffu;
 
-    // Atlas is 256px with 16px tiles => 16x16 tiles.
     const float tilesPerAxis = 16.0;
     vec2 tile = vec2(float(tileX), float(tileY));
     return (tile + faceFrac) / tilesPerAxis;
 }
 
+vec3 computeLighting(vec3 albedo, vec3 normal, vec3 sunDir, float ao)
+{
+    float sunNdotL = max(dot(normal, -sunDir), 0.0);
+    float sunIntensity = 0.82;
+    float ambientLight = 0.18;
+    
+    vec3 sunLight = albedo * sunIntensity * sunNdotL;
+    vec3 ambientComponent = albedo * ambientLight;
+    
+    vec3 lit = (sunLight + ambientComponent) * ao;
+    
+    return lit;
+}
+
 void main()
 {
-    // Ray reconstruction
     vec2 ndc = fragUV * 2.0 - 1.0;
     vec4 clip = vec4(ndc, 1.0, 1.0);
     mat4 invProj = inverse(camUbo[CAMERA_UBO_IDX].proj);
@@ -110,12 +122,10 @@ void main()
     vec3 dirWs = normalize((invView * vec4(viewPos.xyz, 0.0)).xyz);
     vec3 originWs = camUbo[CAMERA_UBO_IDX].camPosWs.xyz;
 
-    // DDA setup
     vec3 rayDir = dirWs;
     vec3 rayOrig = originWs;
 
     ivec3 voxel = ivec3(floor(rayOrig));
-
     ivec3 stepI = ivec3(sign(rayDir));
 
     vec3 safeDir = mix(rayDir, vec3(1e-6), lessThan(abs(rayDir), vec3(1e-6)));
@@ -142,7 +152,6 @@ void main()
             break;
         }
 
-        // advance
         if (tMax.x < tMax.y) {
             if (tMax.x < tMax.z) {
                 voxel.x += stepI.x;
@@ -170,13 +179,11 @@ void main()
         }
 
         if (voxel.y < 0 || voxel.y >= CHUNK_HEIGHT) {
-            // Give up when leaving world vertically.
             break;
         }
     }
 
     if (hitBlock == 0u) {
-        // Simple sky gradient
         float tSky = clamp(rayDir.y * 0.5 + 0.5, 0.0, 1.0);
         vec3 sky = mix(vec3(0.65, 0.75, 0.95), vec3(0.2, 0.35, 0.7), tSky);
         outColor = vec4(sky, 1.0);
@@ -184,31 +191,34 @@ void main()
         return;
     }
 
-    // Hit point and depth
     vec3 hitPos = rayOrig + rayDir * t;
     vec4 clipHit = camUbo[CAMERA_UBO_IDX].proj * camUbo[CAMERA_UBO_IDX].view * vec4(hitPos, 1.0);
     float ndcZ = clipHit.z / max(clipHit.w, 1e-6);
     gl_FragDepth = clamp(ndcZ, 0.0, 1.0);
 
-    // Compute face UVs
     vec3 local = fract(hitPos);
     uint faceId = 0u;
     vec2 faceFrac = vec2(0.0);
 
-    if (hitNormal.x == 1) { faceId = 3u; faceFrac = vec2(1.0 - local.z, local.y); }      // WEST
-    else if (hitNormal.x == -1) { faceId = 2u; faceFrac = vec2(local.z, local.y); }      // EAST
-    else if (hitNormal.z == 1) { faceId = 1u; faceFrac = vec2(local.x, local.y); }       // SOUTH
-    else if (hitNormal.z == -1) { faceId = 0u; faceFrac = vec2(1.0 - local.x, local.y); }// NORTH
-    else if (hitNormal.y == 1) { faceId = 5u; faceFrac = vec2(local.x, 1.0 - local.z); } // BOTTOM
-    else { faceId = 4u; faceFrac = vec2(local.x, local.z); }                             // TOP
+    if (hitNormal.x == 1) { faceId = 3u; faceFrac = vec2(1.0 - local.z, local.y); }
+    else if (hitNormal.x == -1) { faceId = 2u; faceFrac = vec2(local.z, local.y); }
+    else if (hitNormal.z == 1) { faceId = 1u; faceFrac = vec2(local.x, local.y); }
+    else if (hitNormal.z == -1) { faceId = 0u; faceFrac = vec2(1.0 - local.x, local.y); }
+    else if (hitNormal.y == 1) { faceId = 5u; faceFrac = vec2(local.x, 1.0 - local.z); }
+    else { faceId = 4u; faceFrac = vec2(local.x, local.z); }
 
     vec2 uv = getFaceUV(hitBlock, faceId, faceFrac);
     vec3 albedo = texture(texArr[nonuniformEXT(pco.terrainTextureId)], uv).rgb;
 
+    float ao = 1.0;
+    if (pco.aoTextureId != 0xffffffffu) {
+        ao = texture(texArr[nonuniformEXT(pco.aoTextureId)], fragUV).r;
+    }
+
     vec3 n = normalize(vec3(hitNormal));
     vec3 sunDir = normalize(pco.sunDir_ws.xyz);
-    float ndotl = max(dot(n, -sunDir), 0.0);
-    vec3 lit = albedo * (0.18 + 0.82 * ndotl);
+    
+    vec3 lit = computeLighting(albedo, n, sunDir, ao);
 
     outColor = vec4(lit, 1.0);
 }

@@ -685,6 +685,7 @@ void Game::render()
         m_world.getGpuChunkGridSsboId(),
         m_world.getGpuVoxelAtlasSsboId(),
         m_textureCache.getTextureID("terrain"),
+        U32_MAX,
         sunDir
     );
 

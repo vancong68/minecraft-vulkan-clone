@@ -20,6 +20,7 @@ public:
         u32 chunkGridSsboId,
         u32 voxelAtlasSsboId,
         u32 terrainTextureId,
+        u32 aoTextureId,
         const glm::vec3 &sunDir
     );
 
@@ -36,6 +37,7 @@ private:
         alignas(4) u32 voxelAtlasSsboId;
         alignas(4) u32 blockUvSsboId;
         alignas(4) u32 terrainTextureId;
+        alignas(4) u32 aoTextureId;
         alignas(16) glm::vec4 sunDir_ws;
     };
 };
