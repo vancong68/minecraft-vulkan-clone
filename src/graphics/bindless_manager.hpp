@@ -118,8 +118,12 @@ private:
     static constexpr u32 HANDLE_INDEX_MASK = 0x3FFFFFFFu;
     static u32 makeHandle(ResourceType type, u32 index);
     static ResourceType getTypeFromHandle(u32 handle);
+
+public:
     static u32 getLocalIndexFromHandle(u32 handle);
-    static u32 getGlobalIndex(ResourceType type, u32 localIndex);
+
+private:
+    u32 getGlobalIndex(ResourceType type, u32 localIndex) const;
 
 };
 

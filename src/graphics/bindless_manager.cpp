@@ -119,7 +119,7 @@ void BindlessManager::init(Device &device)
     vk::check(res, "Failed to allocate descriptor set.");
 
     m_resources.resize(MAX_UBOS + MAX_SSBOS + MAX_TEXTURES);
-    m_dirtyResources.resize(MAX_UBOS + MAX_SSBOS + MAX_TEXTURES);
+    m_dirtyResources.reserve(MAX_UBOS + MAX_SSBOS + MAX_TEXTURES);
 }
 
 void BindlessManager::destroy()
@@ -424,7 +424,7 @@ u32 BindlessManager::getLocalIndexFromHandle(u32 handle)
     return handle & HANDLE_INDEX_MASK;
 }
 
-u32 BindlessManager::getGlobalIndex(ResourceType type, u32 localIndex)
+u32 BindlessManager::getGlobalIndex(ResourceType type, u32 localIndex) const
 {
     return getResourceBaseIndex(type) + localIndex;
 }

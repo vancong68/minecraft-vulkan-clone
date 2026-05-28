@@ -112,6 +112,11 @@ void Swapchain::beginFrame(u32 &currentFrame)
         U64_MAX
     );
 
+    if (res == VK_ERROR_DEVICE_LOST) {
+        m_outOfDate = true;
+        return;
+    }
+
     vk::check(res, "Failed to wait for fence.");
 }
 

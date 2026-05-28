@@ -3,6 +3,7 @@
 #include <vector>
 
 #include "world/block_registry.hpp"
+#include "graphics/bindless_manager.hpp"
 
 namespace gfx
 {
@@ -76,10 +77,10 @@ void VoxelRenderer::draw(
     m_pipeline.bind(cmd);
 
     PushConstants pc{};
-    pc.chunkGridSsboId = chunkGridSsboId;
-    pc.voxelAtlasSsboId = voxelAtlasSsboId;
-    pc.blockUvSsboId = m_blockUvTableSsboId;
-    pc.terrainTextureId = terrainTextureId;
+    pc.chunkGridSsboId = gfx::BindlessManager::getLocalIndexFromHandle(chunkGridSsboId);
+    pc.voxelAtlasSsboId = gfx::BindlessManager::getLocalIndexFromHandle(voxelAtlasSsboId);
+    pc.blockUvSsboId = gfx::BindlessManager::getLocalIndexFromHandle(m_blockUvTableSsboId);
+    pc.terrainTextureId = gfx::BindlessManager::getLocalIndexFromHandle(terrainTextureId);
     pc.sunDir_ws = glm::vec4(glm::normalize(sunDir), 0.0f);
 
     m_pipeline.push(cmd, pc);
