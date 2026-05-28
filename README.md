@@ -84,7 +84,7 @@ A Minecraft clone built with Vulkan, compatible with both Windows and Linux.
 - First-person controls
 - 3D spatial audio
 
-## Disclaimer : This is my first vibe code project and this is just for entertainment and training AI . Do not harass me or other people related to this project.
+## Disclaimer : I used AI , therefore, this is my first vibecoding project and this project's purposes are entertainment and training AI . Do not harass me or other people related to this project.
 # Special thanks and inspired to this [page](https://github.com/raphvrl/vk-minecraft-clone)
 
 This project is a fan-made clone created for educational purposes only. It is not affiliated with, endorsed by, or connected to Mojang or Microsoft in any way.
