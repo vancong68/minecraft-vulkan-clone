@@ -585,9 +585,12 @@ void World::freeGpuChunkSlot(const ChunkPos &pos)
 
 void World::setGpuChunkGridSlot(const ChunkPos &pos, u32 slotIndex)
 {
-    if (!m_gpuChunkGrid.isValid() || m_gpuChunkGridSize == 0) {
+    if (!m_gpuChunkGrid.isValid() || m_gpuChunkGridSize == 0 || !m_device) {
         return;
     }
+
+    // Ensure GPU is not reading this SSBO while the host writes into it.
+    m_device->waitIdle();
 
     const i32 localX = pos.x - (m_playerChunkPos.x - m_renderDistance);
     const i32 localZ = pos.z - (m_playerChunkPos.z - m_renderDistance);
@@ -621,6 +624,8 @@ void World::uploadChunkVoxelsToGpu(const Chunk &chunk)
     if (!m_gpuVoxelAtlas.isValid() || !m_device) {
         return;
     }
+
+    m_device->waitIdle();
 
     const ChunkPos pos = chunk.pos();
     const u32 slotIndex = allocateGpuChunkSlot(pos);

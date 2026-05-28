@@ -109,9 +109,17 @@ private:
     u32 addResourceInternal(
         ResourceType type,
         u32 binding,
-        u32 &nextIndex,
+        u32 localIndex,
         u32 maxCount
     );
+    u32 getResourceBaseIndex(ResourceType type) const;
+
+    static constexpr u32 HANDLE_TYPE_MASK = 0xC0000000u;
+    static constexpr u32 HANDLE_INDEX_MASK = 0x3FFFFFFFu;
+    static u32 makeHandle(ResourceType type, u32 index);
+    static ResourceType getTypeFromHandle(u32 handle);
+    static u32 getLocalIndexFromHandle(u32 handle);
+    static u32 getGlobalIndex(ResourceType type, u32 localIndex);
 
 };
 

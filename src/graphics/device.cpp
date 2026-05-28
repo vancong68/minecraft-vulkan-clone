@@ -1,4 +1,5 @@
 #include "device.hpp"
+#include "core/debug_log.hpp"
 
 namespace gfx
 {
@@ -131,7 +132,9 @@ void Device::endFrame(VkCommandBuffer cmd)
     vk::check(res, "Failed to end command buffer");
 
     m_swapchain.submit(m_currentFrame, cmd, m_graphicsQueue);
+    core::debugLog("D", "device.cpp:endFrame", "submit_done", "{\"frame\":" + std::to_string(m_currentFrame) + "}");
     m_swapchain.present(m_currentFrame, m_presentQueue);
+    core::debugLog("D", "device.cpp:endFrame", "present_done", "{\"frame\":" + std::to_string(m_currentFrame) + "}");
 
     if (m_swapchain.isOutOfDate()) {
         recreateSwapchain();
