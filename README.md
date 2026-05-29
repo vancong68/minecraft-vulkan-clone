@@ -26,6 +26,7 @@ A Minecraft clone built with Vulkan, compatible with both Windows and Linux.
 - [Vulkan SDK](https://vulkan.lunarg.com/sdk/home)
 - MSYS2 with MinGW-w64 or Visual Studio 2019/2022
 - CMake 3.10 or higher
+- Visual Studio 18 2026 (recommended)
 
 **Linux:**
 - Recent distribution (Ubuntu 22.04+, Fedora 36+, etc.)
