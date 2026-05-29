@@ -64,6 +64,23 @@ void TextureCache::loadTexture(const fs::path &path, const std::string &name)
         return;
     }
 
+    // Try to locate the file in a few places to avoid working-directory issues.
+    if (!fs::exists(texturePath)) {
+        if (fs::exists(path)) {
+            texturePath = path;
+        } else {
+            fs::path alt = fs::current_path() / path;
+            if (fs::exists(alt)) {
+                texturePath = alt;
+            } else {
+                std::cerr << "Warning: Texture file not found: " << texturePath.string()
+                          << " (tried '" << path.string() << "' and '" << alt.string() << "')" << std::endl;
+                m_textures[name] = {m_fallbackImage, m_fallbackTextureID};
+                return;
+            }
+        }
+    }
+
     /// stb_image uploads RGBA8 in R,G,B,A order; must not use BGRA swapchain formats.
     const VkFormat format = VK_FORMAT_R8G8B8A8_SRGB;
 
@@ -76,14 +93,14 @@ void TextureCache::loadTexture(const fs::path &path, const std::string &name)
         );
 
         if (!image.isValid()) {
-            std::cerr << "Warning: Failed to load texture: " << path.string() << " (invalid image)" << std::endl;
+            std::cerr << "Warning: Failed to load texture: " << texturePath.string() << " (invalid image)" << std::endl;
             m_textures[name] = {m_fallbackImage, m_fallbackTextureID};
             return;
         }
         
         u32 textureID = m_device->addTexture(image);
         if (textureID == ~0u) {
-            std::cerr << "Warning: Failed to add texture to bindless manager: " << path.string() << std::endl;
+            std::cerr << "Warning: Failed to add texture to bindless manager: " << texturePath.string() << std::endl;
             image.destroy();
             m_textures[name] = {m_fallbackImage, m_fallbackTextureID};
             return;
@@ -91,7 +108,7 @@ void TextureCache::loadTexture(const fs::path &path, const std::string &name)
 
         m_textures[name] = {image, textureID};
     } catch (const std::exception &e) {
-        std::cerr << "Warning: Exception loading texture " << path.string() << ": " << e.what() << std::endl;
+        std::cerr << "Warning: Exception loading texture " << texturePath.string() << ": " << e.what() << std::endl;
         m_textures[name] = {m_fallbackImage, m_fallbackTextureID};
     }
 }

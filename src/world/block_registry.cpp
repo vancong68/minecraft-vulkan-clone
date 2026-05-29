@@ -16,6 +16,7 @@ BlockRegistry::BlockRegistry()
     for (auto &&[blockKey, blockData] : *blocks.as_table()) {
         Block block;
         TextureInfo texInfo;
+        texInfo.fill(glm::uvec2(0u, 0u));
         int id = -1;
 
         if (auto blockTable = blockData.as_table()) {
@@ -85,7 +86,11 @@ BlockRegistry::BlockRegistry()
             }
         }
 
-        m_blocks[id] = block;
+        if (id >= 0 && id < static_cast<int>(m_blocks.size())) {
+            m_blocks[id] = block;
+        } else {
+            std::cerr << "Warning: Block id out of range: " << id << " for block '" << block.name << "'" << std::endl;
+        }
     }
 }
 

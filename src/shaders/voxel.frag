@@ -213,6 +213,15 @@ void main()
     float ao = 1.0;
     if (pco.aoTextureId != 0xffffffffu) {
         ao = texture(texArr[nonuniformEXT(pco.aoTextureId)], fragUV).r;
+    } else {
+        // Simple voxel-based AO: sample 6 axis neighbors and reduce light based on occupancy.
+        int occ = 0;
+        ivec3 offs[6] = ivec3[](ivec3(1,0,0), ivec3(-1,0,0), ivec3(0,1,0), ivec3(0,-1,0), ivec3(0,0,1), ivec3(0,0,-1));
+        for (int i = 0; i < 6; ++i) {
+            uint sid = sampleBlockId(hitVoxel + offs[i]);
+            if (sid != 0u) ++occ;
+        }
+        ao = clamp(1.0 - float(occ) / 6.0 * 0.6, 0.0, 1.0);
     }
 
     vec3 n = normalize(vec3(hitNormal));

@@ -31,6 +31,11 @@ struct TextureInfo
 {
     std::array<glm::uvec2, 6> faces;
 
+    TextureInfo()
+    {
+        faces.fill(glm::uvec2(0u, 0u));
+    }
+
     void fill(const glm::uvec2 &uv)
     {
         faces.fill(uv);
