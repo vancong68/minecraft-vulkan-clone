@@ -532,6 +532,8 @@ void Image::init(
     VkImageAspectFlags aspectFlags
 )
 {
+    m_device = &device;
+    
     VkDeviceSize imageSize = width * height * 4;
 
     u32 mipLevels = 1;
