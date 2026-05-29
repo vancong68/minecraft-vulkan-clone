@@ -109,46 +109,52 @@ VkCommandBuffer Device::beginFrame()
 
 void Device::endFrame(VkCommandBuffer cmd)
 {
-    if (m_swapchain.isOutOfDate()) {
+    try {
+        if (m_swapchain.isOutOfDate()) {
+            return;
+        }
+
+        VkImageMemoryBarrier2 imageBarrierToPresent{};
+        imageBarrierToPresent.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+        imageBarrierToPresent.srcStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+        imageBarrierToPresent.srcAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
+        imageBarrierToPresent.dstStageMask = VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT;
+        imageBarrierToPresent.dstAccessMask = 0;
+        imageBarrierToPresent.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        imageBarrierToPresent.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+        imageBarrierToPresent.image = m_swapchain.getImage(m_imageIndex);
+        imageBarrierToPresent.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        imageBarrierToPresent.subresourceRange.baseMipLevel = 0;
+        imageBarrierToPresent.subresourceRange.levelCount = 1;
+        imageBarrierToPresent.subresourceRange.baseArrayLayer = 0;
+        imageBarrierToPresent.subresourceRange.layerCount = 1;
+
+        VkDependencyInfoKHR dependencyInfo{};
+        dependencyInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+        dependencyInfo.imageMemoryBarrierCount = 1;
+        dependencyInfo.pImageMemoryBarriers = &imageBarrierToPresent;
+
+        vkCmdPipelineBarrier2(cmd, &dependencyInfo);
+
+        VkResult res = vkEndCommandBuffer(cmd);
+        vk::check(res, "Failed to end command buffer");
+
+        m_swapchain.submit(m_currentFrame, cmd, m_graphicsQueue);
+        core::debugLog("D", "device.cpp:endFrame", "submit_done", "{\"frame\":" + std::to_string(m_currentFrame) + "}");
+        m_swapchain.present(m_currentFrame, m_presentQueue);
+        core::debugLog("D", "device.cpp:endFrame", "present_done", "{\"frame\":" + std::to_string(m_currentFrame) + "}");
+
+        if (m_swapchain.isOutOfDate()) {
+            recreateSwapchain();
+            return;
+        }
+
+        m_currentFrame = (m_currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
+    } catch (const std::exception &e) {
+        core::debugLog("E", "device.cpp:endFrame", "exception", e.what());
+        // Skip frame to avoid crashing on Vulkan device loss or other fatal errors.
         return;
     }
-
-    VkImageMemoryBarrier2 imageBarrierToPresent{};
-    imageBarrierToPresent.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
-    imageBarrierToPresent.srcStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
-    imageBarrierToPresent.srcAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
-    imageBarrierToPresent.dstStageMask = VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT;
-    imageBarrierToPresent.dstAccessMask = 0;
-    imageBarrierToPresent.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-    imageBarrierToPresent.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-    imageBarrierToPresent.image = m_swapchain.getImage(m_imageIndex);
-    imageBarrierToPresent.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    imageBarrierToPresent.subresourceRange.baseMipLevel = 0;
-    imageBarrierToPresent.subresourceRange.levelCount = 1;
-    imageBarrierToPresent.subresourceRange.baseArrayLayer = 0;
-    imageBarrierToPresent.subresourceRange.layerCount = 1;
-
-    VkDependencyInfoKHR dependencyInfo{};
-    dependencyInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
-    dependencyInfo.imageMemoryBarrierCount = 1;
-    dependencyInfo.pImageMemoryBarriers = &imageBarrierToPresent;
-
-    vkCmdPipelineBarrier2(cmd, &dependencyInfo);
-
-    VkResult res = vkEndCommandBuffer(cmd);
-    vk::check(res, "Failed to end command buffer");
-
-    m_swapchain.submit(m_currentFrame, cmd, m_graphicsQueue);
-    core::debugLog("D", "device.cpp:endFrame", "submit_done", "{\"frame\":" + std::to_string(m_currentFrame) + "}");
-    m_swapchain.present(m_currentFrame, m_presentQueue);
-    core::debugLog("D", "device.cpp:endFrame", "present_done", "{\"frame\":" + std::to_string(m_currentFrame) + "}");
-
-    if (m_swapchain.isOutOfDate()) {
-        recreateSwapchain();
-        return;
-    }
-
-    m_currentFrame = (m_currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
 }
 
 void Device::beginRenderClear(VkCommandBuffer cmd)

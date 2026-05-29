@@ -136,6 +136,11 @@ std::pair<u32, VkImage> Swapchain::acquireNextImage(u32 currentFrame)
         &m_imageIndex
     );
 
+    if (res == VK_ERROR_DEVICE_LOST) {
+        m_outOfDate = true;
+        return {0, VK_NULL_HANDLE};
+    }
+
     if (res == VK_ERROR_OUT_OF_DATE_KHR || res == VK_SUBOPTIMAL_KHR) {
         m_outOfDate = true;
         return {0, VK_NULL_HANDLE};
@@ -181,6 +186,11 @@ void Swapchain::submit(
         frame.renderFence
     );
 
+    if (res == VK_ERROR_DEVICE_LOST) {
+        m_outOfDate = true;
+        return;
+    }
+
     vk::check(res, "Failed to submit draw command buffer.");
 }
 
@@ -207,6 +217,11 @@ void Swapchain::present(u32 currentFrame, VkQueue presentQueue)
     presentInfo.pResults = nullptr;
     
     VkResult result = vkQueuePresentKHR(presentQueue, &presentInfo);
+
+    if (result == VK_ERROR_DEVICE_LOST) {
+        m_outOfDate = true;
+        return;
+    }
     
     if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) {
         m_outOfDate = true;
