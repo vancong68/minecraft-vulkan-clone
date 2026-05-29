@@ -77,27 +77,34 @@ void Device::destroy()
 
 VkCommandBuffer Device::beginFrame()
 {
-    m_swapchain.beginFrame(m_currentFrame);
+    try {
+        m_swapchain.beginFrame(m_currentFrame);
 
-    auto [imageIndex, image] = m_swapchain.acquireNextImage(m_currentFrame);
-    m_imageIndex = imageIndex;
+        auto [imageIndex, image] = m_swapchain.acquireNextImage(m_currentFrame);
+        m_imageIndex = imageIndex;
 
-    if (m_swapchain.isOutOfDate()) {
-        recreateSwapchain();
+        if (m_swapchain.isOutOfDate()) {
+            recreateSwapchain();
+            return VK_NULL_HANDLE;
+        }
+
+        auto &frame = m_frames[m_currentFrame];
+        vkResetCommandBuffer(frame.commandBuffer, 0);
+
+        VkCommandBufferBeginInfo beginInfo{};
+        beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+        VkResult res = vkBeginCommandBuffer(frame.commandBuffer, &beginInfo);
+        vk::check(res, "Failed to begin command buffer");
+
+        return frame.commandBuffer;
+    } catch (const std::exception &e) {
+        // Log and avoid crashing the process; device lost requires full reinitialization which
+        // is complex. For now, skip this frame by returning a null command buffer.
+        core::debugLog("E", "device.cpp:beginFrame", "exception", e.what());
         return VK_NULL_HANDLE;
     }
-
-    auto &frame = m_frames[m_currentFrame];
-    vkResetCommandBuffer(frame.commandBuffer, 0);
-
-    VkCommandBufferBeginInfo beginInfo{};
-    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-
-    VkResult res = vkBeginCommandBuffer(frame.commandBuffer, &beginInfo);
-    vk::check(res, "Failed to begin command buffer");
-
-    return frame.commandBuffer;
 }
 
 void Device::endFrame(VkCommandBuffer cmd)
