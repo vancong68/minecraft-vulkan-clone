@@ -85,16 +85,15 @@ FetchContent_MakeAvailable(tomplusplus)
 FetchContent_Declare(fastnoise URL https://github.com/Auburn/FastNoiseLite/archive/refs/heads/master.zip)
 FetchContent_MakeAvailable(fastnoise)
 
-FetchContent_Declare(openal URL https://github.com/kcat/openal-soft/archive/refs/heads/master.zip)
-FetchContent_MakeAvailable(openal)
-
-add_compile_definitions(GLM_ENABLE_EXPERIMENTAL GLM_FORCE_DEPTH_ZERO_TO_ONE)
-
 set(ALSOFT_UTILS OFF CACHE BOOL "" FORCE)
 set(ALSOFT_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(ALSOFT_TESTS OFF CACHE BOOL "" FORCE)
 set(ALSOFT_CONFIG OFF CACHE BOOL "" FORCE)
 set(LIBTYPE "STATIC" CACHE STRING "Library type")
+FetchContent_Declare(openal URL https://github.com/kcat/openal-soft/archive/refs/heads/master.zip)
+FetchContent_MakeAvailable(openal)
+
+add_compile_definitions(GLM_ENABLE_EXPERIMENTAL GLM_FORCE_DEPTH_ZERO_TO_ONE)
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -w")
@@ -108,6 +107,13 @@ file(GLOB_RECURSE SRC_FILES
 )
 
 add_executable(vulkan-minecraft ${SRC_FILES})
+
+set(STB_VORBIS_SOURCE "${stb_vorbis_SOURCE_DIR}/source/stb/stb_vorbis.c")
+if(EXISTS "${STB_VORBIS_SOURCE}")
+    target_sources(vulkan-minecraft PRIVATE "${STB_VORBIS_SOURCE}")
+else()
+    message(FATAL_ERROR "stb_vorbis source not found at ${STB_VORBIS_SOURCE}")
+endif()
 
 if(WIN32)
     target_compile_definitions(vulkan-minecraft PRIVATE NOMINMAX)
@@ -123,8 +129,6 @@ if(WIN32)
         file(WRITE "${APP_ICON_RESOURCE_WINDOWS}" "IDI_ICON1 ICON \"${APP_ICON_PATH}\"\n")
         message(STATUS "Created Windows icon resource file pointing to your existing app.ico")
     endif()
-
-    target_sources(vulkan-minecraft PRIVATE "${stb_vorbis_SOURCE_DIR}/source/stb/stb_vorbis.c")
 
     add_custom_command(TARGET vulkan-minecraft POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
@@ -194,11 +198,20 @@ target_include_directories(vulkan-minecraft PRIVATE
 # set_target_properties(stb_vorbis PROPERTIES LINKER_LANGUAGE C)
 # target_include_directories(stb_vorbis PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/lib/stb")
 
+if(TARGET OpenAL::OpenAL)
+    set(OPENAL_TARGET OpenAL::OpenAL)
+elseif(TARGET OpenAL)
+    set(OPENAL_TARGET OpenAL)
+elseif(TARGET openal)
+    set(OPENAL_TARGET openal)
+else()
+    message(FATAL_ERROR "OpenAL target not found")
+endif()
+
 target_link_libraries(vulkan-minecraft PRIVATE
         glfw
         Vulkan::Vulkan
-        # OpenAL
-        # stb_vorbis
+        ${OPENAL_TARGET}
 )
 
 if(Vulkan_FOUND)

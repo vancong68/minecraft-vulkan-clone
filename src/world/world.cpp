@@ -2,8 +2,21 @@
 
 #include "core/debug_log.hpp"
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <glm/gtc/matrix_transform.hpp>
+
+namespace
+{
+
+i32 worldToChunkCoord(i32 blockCoord)
+{
+    return (blockCoord < 0)
+        ? (blockCoord - (wld::Chunk::CHUNK_SIZE - 1)) / wld::Chunk::CHUNK_SIZE
+        : blockCoord / wld::Chunk::CHUNK_SIZE;
+}
+
+} // namespace
 
 namespace wld
 {
@@ -62,8 +75,8 @@ void World::update(const glm::vec3 &playerPos, f32 dt)
     pollCompletedChunkGen();
 
     ChunkPos newPos = {
-        static_cast<i32>(playerPos.x) / Chunk::CHUNK_SIZE,
-        static_cast<i32>(playerPos.z) / Chunk::CHUNK_SIZE
+        worldToChunkCoord(static_cast<i32>(std::floor(playerPos.x))),
+        worldToChunkCoord(static_cast<i32>(std::floor(playerPos.z)))
     };
 
     static f32 time = 0.0f;
@@ -154,10 +167,8 @@ BlockType World::getBlock(int x, int y, int z) const
     }
 
     ChunkPos chunkPos(
-        (x < 0) ?(x - (Chunk::CHUNK_SIZE - 1)) / Chunk::CHUNK_SIZE :
-            x / Chunk::CHUNK_SIZE,
-        (z < 0) ? (z - (Chunk::CHUNK_SIZE - 1)) / Chunk::CHUNK_SIZE :
-            z / Chunk::CHUNK_SIZE
+        worldToChunkCoord(x),
+        worldToChunkCoord(z)
     );
 
     auto it = m_chunks.find(chunkPos);
@@ -174,8 +185,8 @@ BlockType World::getBlock(int x, int y, int z) const
 void World::placeBlock(const glm::ivec3 &pos, BlockType type)
 {
     ChunkPos chunkPos = {
-        (pos.x < 0) ? (pos.x - (Chunk::CHUNK_SIZE - 1)) / Chunk::CHUNK_SIZE : pos.x / Chunk::CHUNK_SIZE,
-        (pos.z < 0) ? (pos.z - (Chunk::CHUNK_SIZE - 1)) / Chunk::CHUNK_SIZE : pos.z / Chunk::CHUNK_SIZE
+        worldToChunkCoord(pos.x),
+        worldToChunkCoord(pos.z)
     };
 
     if (auto it = m_chunks.find(chunkPos); it != m_chunks.end()) {
@@ -294,17 +305,17 @@ bool World::checkCollision(const glm::vec3 &min, const glm::vec3 &max)
     for (int x = minX; x <= maxX; ++x) {
         for (int z = minZ; z <= maxZ; ++z) {
             ChunkPos chunkPos = {
-                (x < 0) ? (x - (Chunk::CHUNK_SIZE - 1)) / Chunk::CHUNK_SIZE :
-                    x / Chunk::CHUNK_SIZE,
-                (z < 0) ? (z - (Chunk::CHUNK_SIZE - 1)) / Chunk::CHUNK_SIZE :
-                    z / Chunk::CHUNK_SIZE
+                worldToChunkCoord(x),
+                worldToChunkCoord(z)
             };
 
             if (chunkPos.x != currentChunk.x || chunkPos.z != currentChunk.z) {
                 currentChunk = chunkPos;
                 chunk = getChunk(chunkPos);
+            }
 
-                if (!chunk) { continue; }
+            if (!chunk) {
+                continue;
             }
 
             i32 localX = x - (chunkPos.x * Chunk::CHUNK_SIZE);
@@ -314,7 +325,6 @@ bool World::checkCollision(const glm::vec3 &min, const glm::vec3 &max)
                 BlockType block = chunk->getBlock(localX, y, localZ);
 
                 if (
-                    chunk &&
                     block != BlockType::AIR &&
                     wld::BlockRegistry::get().getBlock(block).collision
                 ) {

@@ -249,6 +249,15 @@ void Game::init()
             m_display.setEffects(m_settings.ssao, m_settings.godRays);
         },
         .toggleWeather = [&] { m_settings.weather = !m_settings.weather; },
+        .applyPerformancePreset = [&] {
+            m_settings.shadows = false;
+            m_settings.ssao = false;
+            m_settings.godRays = false;
+            m_settings.weather = false;
+            m_settings.renderDistanceChunks = 4;
+            m_world.setRenderDistance(m_settings.renderDistanceChunks);
+            m_display.setEffects(m_settings.ssao, m_settings.godRays);
+        },
         .cycleTerrain = [&] {
             m_settings.terrainPreset = (m_settings.terrainPreset + 1) % 3;
             m_world.setTerrainPreset(m_settings.terrainPreset);

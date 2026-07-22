@@ -44,6 +44,7 @@ struct PauseSettingsActions
     std::function<void()> toggleSsao;
     std::function<void()> toggleGodRays;
     std::function<void()> toggleWeather;
+    std::function<void()> applyPerformancePreset;
     std::function<void()> cycleTerrain;
     std::function<void()> fovDecrease;
     std::function<void()> fovIncrease;

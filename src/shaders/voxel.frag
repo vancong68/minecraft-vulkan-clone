@@ -92,8 +92,15 @@ vec2 getFaceUV(uint blockId, uint faceId, vec2 faceFrac)
     uint tileY = (uvPacked >> 16u) & 0xffffu;
 
     const float tilesPerAxis = 16.0;
+    const float atlasPixels = 256.0;
     vec2 tile = vec2(float(tileX), float(tileY));
-    return (tile + faceFrac) / tilesPerAxis;
+
+    vec2 halfTexel = vec2(0.5 / atlasPixels);
+    vec2 tileMin = tile / tilesPerAxis + halfTexel;
+    vec2 tileMax = (tile + vec2(1.0)) / tilesPerAxis - halfTexel;
+    vec2 clampedFrac = clamp(faceFrac, vec2(0.0), vec2(1.0));
+
+    return mix(tileMin, tileMax, clampedFrac);
 }
 
 vec3 computeLighting(vec3 albedo, vec3 normal, vec3 sunDir, float ao)
