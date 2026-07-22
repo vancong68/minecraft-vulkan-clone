@@ -445,6 +445,8 @@ std::array<glm::vec2, 4> ChunkMesh::getUVs(
 
     f32 x = (uv.x * tileSize);
     f32 y = (uv.y * tileSize);
+    f32 y = (1.0f - (uv.y + 1) * tileSize);
+    f32 y = (uv.y * tileSize);
 
     return {
         glm::vec2(x, y),
