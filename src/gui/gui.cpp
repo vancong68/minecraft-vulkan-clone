@@ -256,6 +256,7 @@ void GUI::registerPauseSettingsActions(PauseSettingsActions actions)
     addBtn("set_ssao", m_pauseSettings.toggleSsao);
     addBtn("set_godrays", m_pauseSettings.toggleGodRays);
     addBtn("set_weather", m_pauseSettings.toggleWeather);
+    addBtn("set_performance", m_pauseSettings.applyPerformancePreset);
     addBtn("set_terrain", m_pauseSettings.cycleTerrain);
 
     Element fovLo = {
@@ -586,6 +587,9 @@ void GUI::drawPauseElements(VkCommandBuffer cmd)
     }
     if (auto it = m_buttons.find("set_weather"); it != m_buttons.end()) {
         it->second->setText(s.weather ? "Weather: rain" : "Weather: clear");
+    }
+    if (auto it = m_buttons.find("set_performance"); it != m_buttons.end()) {
+        it->second->setText("Performance preset");
     }
     if (auto it = m_buttons.find("set_terrain"); it != m_buttons.end()) {
         const char *names[] = {"flat", "default", "mountains"};
