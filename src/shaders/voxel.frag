@@ -93,6 +93,7 @@ vec2 getFaceUV(uint blockId, uint faceId, vec2 faceFrac)
 
     const float tilesPerAxis = 16.0;
     const float atlasPixels = 256.0;
+    vec2 tile = vec2(float(tileX), float(tileY));
     float flippedTileY = tilesPerAxis - 1.0 - float(tileY);
     vec2 tile = vec2(float(tileX), flippedTileY);
 
