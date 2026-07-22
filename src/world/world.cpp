@@ -312,8 +312,10 @@ bool World::checkCollision(const glm::vec3 &min, const glm::vec3 &max)
             if (chunkPos.x != currentChunk.x || chunkPos.z != currentChunk.z) {
                 currentChunk = chunkPos;
                 chunk = getChunk(chunkPos);
+            }
 
-                if (!chunk) { continue; }
+            if (!chunk) {
+                continue;
             }
 
             i32 localX = x - (chunkPos.x * Chunk::CHUNK_SIZE);
@@ -323,7 +325,6 @@ bool World::checkCollision(const glm::vec3 &min, const glm::vec3 &max)
                 BlockType block = chunk->getBlock(localX, y, localZ);
 
                 if (
-                    chunk &&
                     block != BlockType::AIR &&
                     wld::BlockRegistry::get().getBlock(block).collision
                 ) {
